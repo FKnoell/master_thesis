@@ -15,7 +15,7 @@ URL = (
 )
 
 OUTPUT_MODEL = Path(
-    "specpower_results.csv"
+    "specpower/specpower_results.csv"
 )
 
 

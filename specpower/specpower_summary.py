@@ -10,11 +10,11 @@ import pandas as pd
 
 
 INPUT_FILE = Path(
-    "specpower_results.csv"
+    "specpower/specpower_results.csv"
 )
 
 OUTPUT_PDF = Path(
-    "specpower_results_summary.pdf"
+    "specpower/specpower_results_summary.pdf"
 )
 
 
