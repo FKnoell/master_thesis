@@ -15,7 +15,7 @@ from agents.agent import Agent
 from spark_env.job_dag import JobDAG
 from spark_env.node import Node
 
-v1.disable_eager_execution()
+tf.compat.v1.disable_eager_execution()
 v1.disable_v2_behavior()
 
 class ActorAgent(Agent):
@@ -347,7 +347,7 @@ class ActorAgent(Agent):
         exec_commit, moving_executors, action_map, _ = obs
 
         # compute total number of nodes
-        total_num_nodes = int(np.sum(job_dag.num_nodes for job_dag in job_dags))
+        total_num_nodes = int(sum(job_dag.num_nodes for job_dag in job_dags))
 
         # job and node inputs to feed
         node_inputs = np.zeros([total_num_nodes, self.node_input_dim])
@@ -455,7 +455,7 @@ class ActorAgent(Agent):
 
             base += self.executor_levels[-1]
 
-        total_num_nodes = int(np.sum(
+        total_num_nodes = int(sum(
             job_dag.num_nodes for job_dag in job_dags))
 
         node_valid_mask = np.zeros([1, total_num_nodes])
