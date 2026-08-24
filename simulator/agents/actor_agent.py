@@ -1,3 +1,12 @@
+# This file contains code derived from:
+# https://github.com/umass-solar/carbon-aware-dag
+#
+# Original copyright:
+# Copyright (c) 2024
+#
+# Modifications made in 2026:
+# - refactor: replace deprecated function
+ 
 # actor_agent.py -- implements the Decima scheduler
 
 import numpy as np

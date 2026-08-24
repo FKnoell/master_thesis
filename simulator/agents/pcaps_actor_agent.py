@@ -1,3 +1,12 @@
+# This file contains code derived from:
+# https://github.com/umass-solar/carbon-aware-dag
+#
+# Original copyright:
+# Copyright (c) 2024
+#
+# Modifications made in 2026:
+# - refactor: replace deprecated function
+
 # pcaps_actor_agent implements PCAPS (Precedence- and Carbon-Aware Provisioning and Scheduling)
 # on top of the Decima scheduler.
 

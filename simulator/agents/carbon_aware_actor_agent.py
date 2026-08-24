@@ -1,3 +1,12 @@
+# This file contains code derived from:
+# https://github.com/umass-solar/carbon-aware-dag
+#
+# Original copyright:
+# Copyright (c) 2024
+#
+# Modifications made in 2026:
+# - refactor: replace deprecated function
+
 # carbon_aware_actor_agent.py implements CAP (Carbon-Aware Provisioning) on top of Decima.
 
 import numpy as np
