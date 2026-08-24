@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Fynn [YOUR SURNAME]
+# Copyright (c) 2026 Fynn-Leonard Knöll
 #
 # This file was developed as part of a master's thesis.
 # It contains thesis-specific work and analysis.
