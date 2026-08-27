@@ -17,6 +17,17 @@ from param import *
 from utils import *
 import pandas as pd
 
+# Always-on power models.
+# P_IDLE is charged for every provisioned executor for the full schedule.
+# P_DYN is charged for task execution time.
+power_models = [
+    {"name": "model_1", "pidle": 0.0, "pdyn": 1.0},
+    {"name": "model_2", "pidle": 0.2, "pdyn": 0.8},
+    {"name": "model_3", "pidle": 0.5, "pdyn": 0.5},
+    {"name": "model_4", "pidle": 0.8, "pdyn": 0.2},
+    {"name": "model_5", "pidle": 1.0, "pdyn": 0.0}
+]
+
 # create result folder
 if not os.path.exists(args.result_folder):
     os.makedirs(args.result_folder)
@@ -79,7 +90,12 @@ for scheme in args.test_schemes:
     all_total_reward[scheme] = []
 
 
-scheme_results = []
+carbon_power_results = []
+
+scheme_results_by_model = {
+    model["name"]: []
+    for model in power_models
+}
 
 for exp in range(args.num_exp):
     print('Experiment ' + str(exp + 1) + ' of ' + str(args.num_exp))
@@ -156,39 +172,108 @@ for exp in range(args.num_exp):
 
         all_total_reward[scheme].append(total_reward)
         
-        executor_occupation = np.zeros(int(env.wall_time.curr_time))
-        total_carbon_usage = 0
+        job_dags = env.finished_job_dags
+
+        job_durations = [
+            job_dag.completion_time - job_dag.start_time
+            for job_dag in job_dags
+        ]
+        
+        # Calculate carbon for every power model using this one completed
+        # schedule. The schedule is not rerun for different power models.
         default_carbon_value = carbon_dict[next(iter(carbon_dict))]
+        schedule_end = int(env.wall_time.curr_time)
 
         print("")
-        for job_dag in env.finished_job_dags:
-            for node in job_dag.nodes:
-                for task in node.tasks:
-                    start_time = int(task.start_time)
-                    finish_time = int(task.finish_time)
-                    executor_occupation[
-                    start_time:finish_time] += 1
+        for model in power_models:
+            pidle = model['pidle']
+            pdyn = model['pdyn']
 
-                    start_key = start_time - (start_time % 60000)
-                    end_key = finish_time - (finish_time % 60000)
-                    for key in range(start_key, end_key + 1, 60000):
-                        carbon_value = carbon_dict.get(key, default_carbon_value)
-                        # Calculate overlap of this 100-second bucket with the task's time window
-                        bucket_start = max(start_time, key)
-                        bucket_end = min(finish_time, key + 60000)
-                        duration_in_bucket = bucket_end - bucket_start
-                        total_carbon_usage += duration_in_bucket * carbon_value
+            total_dynamic_carbon_usage = 0.0
+            total_idle_carbon_usage = 0.0
+
+            # Dynamic emissions: task runtime * P_DYN_W * carbon intensity.
+            for job_dag in env.finished_job_dags:
+                for node in job_dag.nodes:
+                    for task in node.tasks:
+                        start = int(task.start_time)
+                        finish = int(task.finish_time)
+
+                        start_key = start - (start % 60000)
+                        end_key = finish - (finish % 60000)
+
+                        for key in range(start_key, end_key + 1, 60000):
+                            carbon_value = carbon_dict.get(
+                                key,
+                                default_carbon_value
+                            )
+
+                            bucket_start = max(start, key)
+                            bucket_end = min(finish, key + 60000)
+                            duration = bucket_end - bucket_start
+
+                            total_dynamic_carbon_usage += (
+                                duration * pdyn * carbon_value
+                            )
+
+            # Always-on idle emissions: every provisioned executor consumes
+            # P_IDLE_W from time 0 until the schedule ends.
+            for key in range(0, schedule_end, 60000):
+                bucket_end = min(key + 60000, schedule_end)
+                duration = bucket_end - key
+                carbon_value = carbon_dict.get(
+                    key,
+                    default_carbon_value
+                )
+
+                total_idle_carbon_usage += (
+                    args.exec_cap
+                    * pidle
+                    * duration
+                    * carbon_value
+                )
+
+            total_carbon_usage = (
+                total_dynamic_carbon_usage
+                + total_idle_carbon_usage
+            )
+            
+            scheme_results_by_model[model["name"]].append((
+                scheme,
+                env.wall_time.curr_time,
+                total_carbon_usage,
+                np.mean(job_durations)
+            ))
+
+            carbon_power_results.append({
+                "experiment": exp + 1,
+                "scheme": scheme,
+                "power_model": model["name"],
+                "pidle": pidle,
+                "pdyn": pdyn,
+                "dynamic_carbon_usage":
+                    total_dynamic_carbon_usage,
+                "idle_carbon_usage":
+                    total_idle_carbon_usage,
+                "total_carbon_usage":
+                    total_carbon_usage,
+            })
+
+            print(
+                f""
+                f"Carbon usage — experiment {exp + 1}, "
+                f"scheme {scheme}, model {model['name']}: "
+                f"dynamic={total_dynamic_carbon_usage:.2f}, "
+                f"idle={total_idle_carbon_usage:.2f}, "
+                f"total={total_carbon_usage:.2f}"
+            )
+        
        
         # Add scheme data to results
         job_dags = env.finished_job_dags
         job_durations = [job_dag.completion_time - job_dag.start_time for job_dag in job_dags]
-
-        scheme_results.append((
-            scheme,  # Scheme name
-            env.wall_time.curr_time,  # Total time (avg executors)
-            total_carbon_usage,  # Total carbon usage
-            np.mean(job_durations)  # Average job completion time
-        ))
+        
+    '''
     print("Creating graphs\n")
     if args.canvs_visualization == 0: 
         visualize_carbon_usage_aggregated(
@@ -206,7 +291,7 @@ for exp in range(args.num_exp):
         visualize_executor_usage(env.finished_job_dags,
             args.result_folder + 'visualization_exp_' + \
             str(exp) + '_scheme_' + scheme + '.png', carbon_dict)
-
+    '''
 
     # # plot CDF of performance
     # if args.canvs_visualization == 0:
@@ -225,3 +310,73 @@ for exp in range(args.num_exp):
     # fig.savefig(args.result_folder + 'total_reward.png')
 
     # plt.close(fig)
+
+pd.DataFrame(carbon_power_results).to_csv(
+    args.result_folder + "carbon_power_models.csv",
+    index=False
+)
+
+for model in power_models:
+    model_name = model["name"]
+    scheme_data = scheme_results_by_model[model_name]
+
+    print(
+        f"{model_name}: "
+        f"{len(scheme_data)} entries"
+    )
+
+    if not scheme_data:
+        print(
+            f"Skipping {model_name}: "
+            "no results were collected"
+        )
+        continue
+
+    # Average the five experiments for each scheduler.
+    averaged_scheme_data = {}
+
+    for entry in scheme_data:
+        scheme = entry[0]
+        completion_time = entry[1]
+        carbon_usage = entry[2]
+        average_job_duration = entry[3]
+
+        if scheme not in averaged_scheme_data:
+            averaged_scheme_data[scheme] = {
+                "completion_time": [],
+                "carbon_usage": [],
+                "job_duration": [],
+            }
+
+        averaged_scheme_data[scheme]["completion_time"].append(
+            completion_time
+        )
+        averaged_scheme_data[scheme]["carbon_usage"].append(
+            carbon_usage
+        )
+        averaged_scheme_data[scheme]["job_duration"].append(
+            average_job_duration
+        )
+
+    averaged_data = []
+
+    for scheme, values in averaged_scheme_data.items():
+        averaged_data.append((
+            scheme,
+            np.mean(values["completion_time"]),
+            np.mean(values["carbon_usage"]),
+            np.mean(values["job_duration"]),
+        ))
+
+    print(
+        f"Plotting {model_name} with "
+        f"{len(averaged_data)} averaged scheduler results"
+    )
+
+    visualize_carbon_usage_aggregated(
+        averaged_data,
+        args.result_folder +
+        "aggregated_carbon_usage_" +
+        model_name +
+        ".png"
+    )
