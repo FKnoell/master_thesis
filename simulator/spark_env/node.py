@@ -106,13 +106,17 @@ class Node(object):
                 # (1) try to directly retrieve the warmup delay from data
                 fresh_durations = \
                     self.task_duration['fresh_durations'][executor_key]
-                i = np.random.randint(len(fresh_durations))
+                # i = np.random.randint(len(fresh_durations))
+                # Use a fixed seed for reproducibility
+                i = self.np_random.randint(len(fresh_durations))
                 duration = fresh_durations[i]
             else:
                 # (2) use first wave but deliberately add in a warmup delay
                 first_wave = \
                     self.task_duration['first_wave'][executor_key]
-                i = np.random.randint(len(first_wave))
+                # i = np.random.randint(len(first_wave))
+                # Use a fixed seed for reproducibility
+                i = self.np_random.randint(len(first_wave))
                 duration = first_wave[i] + args.warmup_delay
 
         elif executor.task is not None and \
@@ -121,7 +125,9 @@ class Node(object):
             # executor was working on this node
             # the task duration should be retrieved from rest wave
             rest_wave = self.task_duration['rest_wave'][executor_key]
-            i = np.random.randint(len(rest_wave))
+            # i = np.random.randint(len(rest_wave))
+            # Use a fixed seed for reproducibility
+            i = self.np_random.randint(len(rest_wave))
             duration = rest_wave[i]
         else:
             # executor is fresh to this node, use first wave
@@ -129,14 +135,18 @@ class Node(object):
                 # (1) try to retrieve first wave from data
                 first_wave = \
                     self.task_duration['first_wave'][executor_key]
-                i = np.random.randint(len(first_wave))
+                # i = np.random.randint(len(first_wave))
+                # Use a fixed seed for reproducibility
+                i = self.np_random.randint(len(first_wave))
                 duration = first_wave[i]
             else:
                 # (2) first wave doesn't exist, use fresh durations instead
                 # (should happen very rarely)
                 fresh_durations = \
                     self.task_duration['fresh_durations'][executor_key]
-                i = np.random.randint(len(fresh_durations))
+                # i = np.random.randint(len(fresh_durations))
+                # Use a fixed seed for reproducibility
+                i = self.np_random.randint(len(fresh_durations))
                 duration = fresh_durations[i]
 
         # detach the executor from old node
