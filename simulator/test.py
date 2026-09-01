@@ -21,11 +21,8 @@ import pandas as pd
 # P_IDLE is charged for every provisioned executor for the full schedule.
 # P_DYN is charged for task execution time.
 power_models = [
-    {"name": "model_1", "pidle": 0.0, "pdyn": 1.0},
-    {"name": "model_2", "pidle": 0.2, "pdyn": 0.8},
-    {"name": "model_3", "pidle": 0.5, "pdyn": 0.5},
-    {"name": "model_4", "pidle": 0.8, "pdyn": 0.2},
-    {"name": "model_5", "pidle": 1.0, "pdyn": 0.0}
+    {"name": f"model_{i}", "pidle": i / 100.0, "pdyn": 1.0 - i / 100.0}
+    for i in range(0, 101)
 ]
 
 # create result folder
@@ -111,15 +108,17 @@ for exp in range(args.num_exp):
 
     for scheme in args.test_schemes:
         print('Scheme ' + scheme)
-        # # reset environment with seed
-        # env.seed(args.num_ep + exp)
-        # env.reset()
+        # reset environment with seed
+        env.seed(args.num_ep + exp)
+        env.reset()
         
+        '''
         # Use a fixed seed for reproducibility across experiments
         FIXED_EXP_SEED = 12345
 
         env.seed(FIXED_EXP_SEED)
         env.reset()
+        '''
 
         # load an agent
         agent = agents[scheme]
@@ -142,11 +141,13 @@ for exp in range(args.num_exp):
         elif scheme == 'pcaps':
             # refresh tensorflow completely
             tf.compat.v1.reset_default_graph() 
-            # tf.compat.v1.set_random_seed(args.seed)
+            tf.compat.v1.set_random_seed(args.seed)
             
+            '''
             # Set a fixed seed for TensorFlow to ensure reproducibility
             FIXED_TF_SEED = 42
             tf.compat.v1.set_random_seed(FIXED_TF_SEED)
+            '''
             
             sess = tf.compat.v1.Session()
             # initialize scheduler
@@ -336,6 +337,7 @@ pd.DataFrame(carbon_power_results).to_csv(
     index=False
 )
 
+'''
 for model in power_models:
     model_name = model["name"]
     scheme_data = scheme_results_by_model[model_name]
@@ -400,3 +402,4 @@ for model in power_models:
         model_name +
         ".png"
     )
+'''
