@@ -39,10 +39,19 @@ df = pd.read_csv(args.carbon_trace)
 c = df["carbon_intensity_avg"]
 r = df['power_production_percent_renewable_avg']
 
-# pick a random start time in the trace
-start_time = np.random.randint(0, len(c) - 100)
-c = c[start_time:start_time + 100].to_list()
-r = r[start_time:start_time + 100].to_list()
+# # pick a random start time in the trace
+# start_time = np.random.randint(0, len(c) - 100)
+# c = c[start_time:start_time + 100].to_list()
+# r = r[start_time:start_time + 100].to_list()
+
+# Select a specific start index for the trace to ensure reproducibility
+TRACE_START = 500
+
+if TRACE_START < 0 or TRACE_START + 100 > len(c):
+    raise ValueError("TRACE_START must select 100 valid samples")
+
+c = c[TRACE_START:TRACE_START + 100].to_list()
+r = r[TRACE_START:TRACE_START + 100].to_list()
 
 carbon_schedule = [(60000 * i, c[i]) for i in range(len(c))]
 
@@ -102,8 +111,14 @@ for exp in range(args.num_exp):
 
     for scheme in args.test_schemes:
         print('Scheme ' + scheme)
-        # reset environment with seed
-        env.seed(args.num_ep + exp)
+        # # reset environment with seed
+        # env.seed(args.num_ep + exp)
+        # env.reset()
+        
+        # Use a fixed seed for reproducibility across experiments
+        FIXED_EXP_SEED = 12345
+
+        env.seed(FIXED_EXP_SEED)
         env.reset()
 
         # load an agent
@@ -127,7 +142,12 @@ for exp in range(args.num_exp):
         elif scheme == 'pcaps':
             # refresh tensorflow completely
             tf.compat.v1.reset_default_graph() 
-            tf.compat.v1.set_random_seed(args.seed)
+            # tf.compat.v1.set_random_seed(args.seed)
+            
+            # Set a fixed seed for TensorFlow to ensure reproducibility
+            FIXED_TF_SEED = 42
+            tf.compat.v1.set_random_seed(FIXED_TF_SEED)
+            
             sess = tf.compat.v1.Session()
             # initialize scheduler
             agent = PCAPSAgent(
