@@ -346,10 +346,12 @@ class Environment(object):
 
         if next_node is None and carbon_aware:
             # Schedule a dummy node to wait for a lower carbon intensity period
-            duration = min(self.time_until_next_carbon_reading(), self.time_until_next_scheduling_decision())
+            next_carbon_reading = self.time_until_next_carbon_reading()
+            next_scheduling_decision = self.time_until_next_scheduling_decision()
+            duration = min(next_carbon_reading, next_scheduling_decision)
             # duration = self.time_until_next_carbon_reading()
-            if duration == float('inf'):
-                duration = 0
+            if duration <= 0 or duration == float('inf'):
+                duration = max(args.moving_delay, 1)
 
             next_node = self.create_dummy_node(duration, limit)
             dummy_job_dag = next_node.job_dag

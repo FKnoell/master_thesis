@@ -42,15 +42,19 @@ power_models = [
 if not os.path.exists(args.result_folder):
     os.makedirs(args.result_folder)
 
-# tensorflo seeding
-tf.compat.v1.set_random_seed(args.seed)
+# Generate one reproducible but distinct seed for each experiment. The same
+# seed is reused for every power model and scheme within that experiment.
+seed_generator = np.random.RandomState(args.seed)
+experiment_seeds = seed_generator.randint(
+    0, np.iinfo(np.int32).max, size=args.num_exp)
 
 df = pd.read_csv(args.carbon_trace)
 c = df["carbon_intensity_avg"]
 r = df['power_production_percent_renewable_avg']
 
 # pick a random start time in the trace
-start_time = np.random.randint(0, len(c) - 100)
+trace_rng = np.random.RandomState(args.seed)
+start_time = trace_rng.randint(0, len(c) - 100)
 c = c[start_time:start_time + 100].to_list()
 r = r[start_time:start_time + 100].to_list()
 
@@ -73,14 +77,14 @@ renewable_dict = {}
 for i in range(len(r)):
     renewable_dict[60000*i] = r[i]
 
-def create_agent(scheme, power_model):
+def create_agent(scheme, power_model, experiment_seed):
     """Create a fresh scheduler configured for one power model."""
     pidle = power_model['pidle']
     pdyn = power_model['pdyn']
 
     if scheme in ('pcaps', 'cap_decima'):
         tf.compat.v1.reset_default_graph()
-        tf.compat.v1.set_random_seed(args.seed)
+        tf.compat.v1.set_random_seed(int(experiment_seed))
         sess = tf.compat.v1.Session()
         agent_class = PCAPSAgent if scheme == 'pcaps' else CarbonActorAgent
         return agent_class(
@@ -91,7 +95,7 @@ def create_agent(scheme, power_model):
 
     if scheme == 'decima':
         tf.compat.v1.reset_default_graph()
-        tf.compat.v1.set_random_seed(args.seed)
+        tf.compat.v1.set_random_seed(int(experiment_seed))
         sess = tf.compat.v1.Session()
         return ActorAgent(
             sess, args.node_input_dim, args.job_input_dim,
@@ -199,13 +203,15 @@ for model in power_models:
 
     for exp in range(args.num_exp):
         print('Experiment ' + str(exp + 1) + ' of ' + str(args.num_exp))
+        experiment_seed = int(experiment_seeds[exp])
 
         for scheme in args.test_schemes:
             print('Scheme ' + scheme)
+            np.random.seed(experiment_seed)
             env = Environment(carbon_schedule=carbon_dict)
-            env.seed(args.num_ep + exp)
+            env.seed(experiment_seed)
             env.reset()
-            agent = create_agent(scheme, model)
+            agent = create_agent(scheme, model, experiment_seed)
             total_reward = run_scheme(env, scheme, agent)
             all_total_reward[scheme].append(total_reward)
 
@@ -236,8 +242,8 @@ for model in power_models:
 
             print("")
             print(
-                f"Carbon usage — experiment {exp + 1}, "
-                f"scheme {scheme}, model {model['name']}: "
+                f"Carbon usage — model {model['name']}, "
+                f"scheme {scheme}, experiment {exp + 1},: "
                 f"dynamic={total_dynamic_carbon_usage:.2f}, "
                 f"idle={total_idle_carbon_usage:.2f}, "
                 f"total={total_carbon_usage:.2f}"

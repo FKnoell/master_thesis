@@ -31,6 +31,28 @@ class CarbonAgent(Agent):
 
     def set_carbon_schedule(self, carbon_schedule):
         self.carbon_schedule = carbon_schedule
+
+    def count_allocated_executors(self, job_dags, exec_commit, moving_executors):
+        allocated = sum(
+            len(job_dag.executors)
+            for job_dag in job_dags
+            if job_dag.name != 'dummy'
+        )
+
+        allocated += sum(
+            1
+            for node in moving_executors.moving_executors.values()
+            if node.job_dag.name != 'dummy'
+        )
+
+        # A commitment from the None pool represents an executor that has
+        # not been attached to a job yet. Commitments from a job or node are
+        # already included in that job's executor count above.
+        for node, count in exec_commit.commit[None].items():
+            if node is not None and node.job_dag.name != 'dummy':
+                allocated += count
+
+        return allocated
         
 
     def get_carbon_intensity(self, current_time):
@@ -90,24 +112,15 @@ class CarbonAgent(Agent):
         # set the new exec cap
         self.exec_cap = threshold_result
 
-        # sort out the new exec_map
-        for job_dag in job_dags:
-            if job_dag not in self.exec_map:
-                self.exec_map[job_dag] = 0
-        for job_dag in list(self.exec_map):
-            if job_dag not in job_dags:
-                del self.exec_map[job_dag]
-
-        # look at how many executors are currently up and running
-        num_exec = 0
-        for job_dag in list(self.exec_map):
-            num_exec += self.exec_map[job_dag]
+        # Derive capacity from the environment instead of retaining a stale
+        # estimate across task completions and executor movements.
+        num_exec = self.count_allocated_executors(
+            job_dags, exec_commit, moving_executors)
+        available_exec = self.exec_cap - num_exec
 
         # the source job is finished or does not exist
-        if num_exec >= self.exec_cap:
+        if available_exec <= 0:
             # we need to pause execution, so just return a null action
-            if source_job is not None and source_job in list(self.exec_map):
-                self.exec_map[source_job] = max(self.exec_map[source_job] - num_source_exec, 0)
             return None, num_source_exec, True
 
         scheduled = False
@@ -129,7 +142,10 @@ class CarbonAgent(Agent):
                         # return dummy task
                         return None, num_source_exec, True
                     
-                    return node, min(num_source_exec, max(int(self.exec_cap/self.exec_cap_MAX), 1)), False
+                    return node, min(
+                        num_source_exec,
+                        available_exec,
+                        max(int(self.exec_cap / self.exec_cap_MAX), 1)), False
 
             # schedulable node in the job
             for node in frontier_nodes:
@@ -147,10 +163,13 @@ class CarbonAgent(Agent):
                         # return dummy task
                         return None, num_source_exec, True
                     
-                    return node, min(num_source_exec, max(int(self.exec_cap/self.exec_cap_MAX), 1)), False
+                    return node, min(
+                        num_source_exec,
+                        available_exec,
+                        max(int(self.exec_cap / self.exec_cap_MAX), 1)), False
         
         for job_dag in job_dags:
-            if self.exec_map[job_dag] < self.exec_cap:
+            if available_exec > 0:
                 next_node = None
                 # immediately scheduable node first
                 for node in job_dag.frontier_nodes:
@@ -169,9 +188,10 @@ class CarbonAgent(Agent):
                         node.num_tasks - node.next_task_idx - \
                         exec_commit.node_commit[node] - \
                         moving_executors.count(node),
-                        num_source_exec)                    
+                        num_source_exec,
+                        available_exec)
                     use_exec = use_exec_init
-                    self.exec_map[job_dag] += use_exec
-                    return node, use_exec, False
+                    if use_exec >= 1:
+                        return node, use_exec, False
         
         return None, num_source_exec, False
