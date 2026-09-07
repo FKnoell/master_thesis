@@ -11,6 +11,7 @@ from agents.actor_agent import ActorAgent
 from agents.carbon_aware_actor_agent import CarbonActorAgent
 from agents.pcaps_actor_agent import PCAPSAgent
 from agents.carbon_aware_fifo_agent import CarbonAgent
+from agents.cap_fifo_backfill_agent import CarbonAgent as CarbonBackfillAgent
 from agents.green_hadoop_agent import GreenHadoopThetaAgent
 from spark_env.canvas import *
 from param import *
@@ -82,6 +83,8 @@ for scheme in args.test_schemes:
         agents[scheme] = SparkAgent(exec_cap=args.exec_cap)
     elif scheme == 'cap_fifo':
         agents[scheme] = CarbonAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
+    elif scheme == 'cap_fifo_backfill':
+        agents[scheme] = CarbonBackfillAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
     elif scheme == 'cap_partition':
         agents[scheme] = CarbonPartitionAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
     elif scheme == 'green_hadoop':
@@ -129,7 +132,7 @@ for exp in range(args.num_exp):
         total_reward = 0
         done = False
         i = 0
-        if scheme != 'pcaps' and scheme != 'cap_fifo' and scheme != 'cap_partition' and scheme != 'cap_decima' and scheme != 'green_hadoop':
+        if scheme != 'pcaps' and scheme != 'cap_fifo' and scheme != 'cap_fifo_backfill' and scheme != 'cap_partition' and scheme != 'cap_decima' and scheme != 'green_hadoop':
             while not done:
                 # print a single dot every 10 steps to indicate progress (all on same line)
                 if i % 10 == 0:
@@ -178,7 +181,7 @@ for exp in range(args.num_exp):
                 i += 1
                 obs, reward, done = env.step(node, use_exec, carbon_aware = cw)
                 total_reward += reward
-        elif scheme == 'cap_fifo' or scheme == 'cap_partition' or scheme == 'green_hadoop':
+        elif scheme == 'cap_fifo' or scheme == 'cap_fifo_backfill' or scheme == 'cap_partition' or scheme == 'green_hadoop':
             while not done:
                 # print a single dot every 10 steps to indicate progress (all on same line)
                 if i % 10 == 0:
