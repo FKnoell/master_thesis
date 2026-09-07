@@ -9,8 +9,9 @@ from scipy.special import lambertw
 class CarbonAgent(Agent):
     # statically partition the cluster resource
     # scheduling complexity: O(num_nodes * num_executors)
-    def __init__(self, exec_cap, carbon_schedule, exec_lower_bound=20):
-        Agent.__init__(self)
+    def __init__(self, exec_cap, carbon_schedule, exec_lower_bound=20,
+                 pidle=0.0, pdyn=1.0):
+        Agent.__init__(self, pidle=pidle, pdyn=pdyn)
 
         # map for executor assignment
         self.exec_map = {}

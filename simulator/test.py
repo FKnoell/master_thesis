@@ -20,9 +20,22 @@ import pandas as pd
 # Always-on power models.
 # P_IDLE is charged for every provisioned executor for the full schedule.
 # P_DYN is charged for task execution time.
+pidle_start, pidle_stop, pidle_step = args.pidle_range
+if not 0 <= pidle_start <= 1 or not 0 <= pidle_stop <= 1:
+    raise ValueError('--pidle_range START and STOP must be between 0 and 1')
+if pidle_step <= 0:
+    raise ValueError('--pidle_range STEP must be greater than 0')
+if pidle_start > pidle_stop:
+    raise ValueError('--pidle_range START must not be greater than STOP')
+
+pidle_values = np.arange(
+    pidle_start, pidle_stop + (pidle_step / 2), pidle_step)
+pidle_values = [round(float(value), 10) for value in pidle_values
+                if 0 <= value <= 1]
+
 power_models = [
-    {"name": f"model_{i}", "pidle": i / 100.0, "pdyn": 1.0 - i / 100.0}
-    for i in range(0, 101)
+    {"name": f"model_{i}", "pidle": pidle, "pdyn": 1.0 - pidle}
+    for i, pidle in enumerate(pidle_values)
 ]
 
 # create result folder
@@ -36,19 +49,19 @@ df = pd.read_csv(args.carbon_trace)
 c = df["carbon_intensity_avg"]
 r = df['power_production_percent_renewable_avg']
 
-# # pick a random start time in the trace
-# start_time = np.random.randint(0, len(c) - 100)
-# c = c[start_time:start_time + 100].to_list()
-# r = r[start_time:start_time + 100].to_list()
+# pick a random start time in the trace
+start_time = np.random.randint(0, len(c) - 100)
+c = c[start_time:start_time + 100].to_list()
+r = r[start_time:start_time + 100].to_list()
 
-# Select a specific start index for the trace to ensure reproducibility
-TRACE_START = 500
-
-if TRACE_START < 0 or TRACE_START + 100 > len(c):
-    raise ValueError("TRACE_START must select 100 valid samples")
-
-c = c[TRACE_START:TRACE_START + 100].to_list()
-r = r[TRACE_START:TRACE_START + 100].to_list()
+# # Select a specific start index for the trace to ensure reproducibility
+# TRACE_START = 500
+# 
+# if TRACE_START < 0 or TRACE_START + 100 > len(c):
+#     raise ValueError("TRACE_START must select 100 valid samples")
+# 
+# c = c[TRACE_START:TRACE_START + 100].to_list()
+# r = r[TRACE_START:TRACE_START + 100].to_list()
 
 carbon_schedule = [(60000 * i, c[i]) for i in range(len(c))]
 
@@ -60,35 +73,113 @@ renewable_dict = {}
 for i in range(len(r)):
     renewable_dict[60000*i] = r[i]
 
-# set up environment
-env = Environment(carbon_schedule=carbon_dict)
+def create_agent(scheme, power_model):
+    """Create a fresh scheduler configured for one power model."""
+    pidle = power_model['pidle']
+    pdyn = power_model['pdyn']
 
-# set up agents
-agents = {}
-carbon_time_list = []
-
-for scheme in args.test_schemes:
-    if scheme == 'decima':
+    if scheme in ('pcaps', 'cap_decima'):
+        tf.compat.v1.reset_default_graph()
+        tf.compat.v1.set_random_seed(args.seed)
         sess = tf.compat.v1.Session()
-        agents[scheme] = ActorAgent(
+        agent_class = PCAPSAgent if scheme == 'pcaps' else CarbonActorAgent
+        return agent_class(
             sess, args.node_input_dim, args.job_input_dim,
             args.hid_dims, args.output_dim, args.max_depth,
-            range(1, args.exec_cap + 1))
-    elif scheme == 'pcaps' or scheme == 'cap_decima':
-        agents[scheme] = None
-    elif scheme == 'dynamic_partition':
-        agents[scheme] = DynamicPartitionAgent()
-    elif scheme == 'spark_fifo':
-        agents[scheme] = SparkAgent(exec_cap=args.exec_cap)
-    elif scheme == 'cap_fifo':
-        agents[scheme] = CarbonAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
-    elif scheme == 'cap_partition':
-        agents[scheme] = CarbonPartitionAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
-    elif scheme == 'green_hadoop':
-        agents[scheme] = GreenHadoopThetaAgent(exec_cap=args.exec_cap, renewable_dict=renewable_dict)
-    else:
-        print('scheme ' + str(scheme) + ' not recognized')
-        exit(1)
+            range(1, args.exec_cap + 1), carbon_dict,
+            pidle=pidle, pdyn=pdyn)
+
+    if scheme == 'decima':
+        tf.compat.v1.reset_default_graph()
+        tf.compat.v1.set_random_seed(args.seed)
+        sess = tf.compat.v1.Session()
+        return ActorAgent(
+            sess, args.node_input_dim, args.job_input_dim,
+            args.hid_dims, args.output_dim, args.max_depth,
+            range(1, args.exec_cap + 1), pidle=pidle, pdyn=pdyn)
+    if scheme == 'dynamic_partition':
+        return DynamicPartitionAgent()
+    if scheme == 'spark_fifo':
+        return SparkAgent(exec_cap=args.exec_cap)
+    if scheme == 'cap_fifo':
+        return CarbonAgent(
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
+            pidle=pidle, pdyn=pdyn)
+    if scheme == 'cap_partition':
+        return CarbonPartitionAgent(
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
+            pidle=pidle, pdyn=pdyn)
+    if scheme == 'green_hadoop':
+        return GreenHadoopThetaAgent(
+            exec_cap=args.exec_cap, renewable_dict=renewable_dict)
+
+    raise ValueError('scheme ' + str(scheme) + ' not recognized')
+
+
+def run_scheme(env, scheme, agent):
+    """Run one scheduler against one fresh environment."""
+    obs = env.observe()
+    total_reward = 0
+    done = False
+    step = 0
+
+    while not done:
+        if step % 10 == 0:
+            print('.', end='', flush=True)
+        step += 1
+
+        if scheme in ('pcaps', 'cap_decima', 'cap_fifo',
+                      'cap_partition', 'green_hadoop'):
+            node, use_exec, carbon_aware = agent.get_action(obs)
+            obs, reward, done = env.step(
+                node, use_exec, carbon_aware=carbon_aware)
+        else:
+            node, use_exec = agent.get_action(obs)
+            obs, reward, done = env.step(node, use_exec)
+
+        total_reward += reward
+
+    return total_reward
+
+
+def calculate_carbon_usage(env, power_model):
+    """Calculate carbon usage for the schedule and one power model."""
+    default_carbon_value = carbon_dict[next(iter(carbon_dict))]
+    schedule_end = int(env.wall_time.curr_time)
+    pidle = power_model['pidle']
+    pdyn = power_model['pdyn']
+
+    total_dynamic_carbon_usage = 0.0
+    total_idle_carbon_usage = 0.0
+
+    for job_dag in env.finished_job_dags:
+        for node in job_dag.nodes:
+            for task in node.tasks:
+                start = int(task.start_time)
+                finish = int(task.finish_time)
+                start_key = start - (start % 60000)
+                end_key = finish - (finish % 60000)
+
+                for key in range(start_key, end_key + 1, 60000):
+                    carbon_value = carbon_dict.get(key, default_carbon_value)
+                    bucket_start = max(start, key)
+                    bucket_end = min(finish, key + 60000)
+                    duration = bucket_end - bucket_start
+                    total_dynamic_carbon_usage += (
+                        duration * pdyn * carbon_value)
+
+    for key in range(0, schedule_end, 60000):
+        bucket_end = min(key + 60000, schedule_end)
+        duration = bucket_end - key
+        carbon_value = carbon_dict.get(key, default_carbon_value)
+        total_idle_carbon_usage += (
+            args.exec_cap * pidle * duration * carbon_value)
+
+    return (
+        total_dynamic_carbon_usage + total_idle_carbon_usage,
+        total_dynamic_carbon_usage,
+        total_idle_carbon_usage,
+    )
 
 # store info for all schemes
 all_total_reward = {}
@@ -103,162 +194,28 @@ scheme_results_by_model = {
     for model in power_models
 }
 
-for exp in range(args.num_exp):
-    print('Experiment ' + str(exp + 1) + ' of ' + str(args.num_exp))
+for model in power_models:
+    print('Power model ' + model['name'])
 
-    for scheme in args.test_schemes:
-        print('Scheme ' + scheme)
-        # reset environment with seed
-        env.seed(args.num_ep + exp)
-        env.reset()
-        
-        '''
-        # Use a fixed seed for reproducibility across experiments
-        FIXED_EXP_SEED = 12345
+    for exp in range(args.num_exp):
+        print('Experiment ' + str(exp + 1) + ' of ' + str(args.num_exp))
 
-        env.seed(FIXED_EXP_SEED)
-        env.reset()
-        '''
+        for scheme in args.test_schemes:
+            print('Scheme ' + scheme)
+            env = Environment(carbon_schedule=carbon_dict)
+            env.seed(args.num_ep + exp)
+            env.reset()
+            agent = create_agent(scheme, model)
+            total_reward = run_scheme(env, scheme, agent)
+            all_total_reward[scheme].append(total_reward)
 
-        # load an agent
-        agent = agents[scheme]
+            job_durations = [
+                job_dag.completion_time - job_dag.start_time
+                for job_dag in env.finished_job_dags
+            ]
+            total_carbon_usage, total_dynamic_carbon_usage, \
+                total_idle_carbon_usage = calculate_carbon_usage(env, model)
 
-        # start experiment
-        obs = env.observe()
-
-        total_reward = 0
-        done = False
-        i = 0
-        if scheme != 'pcaps' and scheme != 'cap_fifo' and scheme != 'cap_partition' and scheme != 'cap_decima' and scheme != 'green_hadoop':
-            while not done:
-                # print a single dot every 10 steps to indicate progress (all on same line)
-                if i % 10 == 0:
-                    print('.', end='', flush=True)
-                i += 1
-                node, use_exec = agent.get_action(obs)
-                obs, reward, done = env.step(node, use_exec)
-                total_reward += reward
-        elif scheme == 'pcaps':
-            # refresh tensorflow completely
-            tf.compat.v1.reset_default_graph() 
-            tf.compat.v1.set_random_seed(args.seed)
-            
-            '''
-            # Set a fixed seed for TensorFlow to ensure reproducibility
-            FIXED_TF_SEED = 42
-            tf.compat.v1.set_random_seed(FIXED_TF_SEED)
-            '''
-            
-            sess = tf.compat.v1.Session()
-            # initialize scheduler
-            agent = PCAPSAgent(
-                sess, args.node_input_dim, args.job_input_dim,
-                args.hid_dims, args.output_dim, args.max_depth,
-                range(1, args.exec_cap + 1), carbon_dict)
-            while not done:
-                node, use_exec, cw = agent.get_action(obs)
-                if i % 10 == 0:
-                    print('.', end='', flush=True)
-                i += 1
-                obs, reward, done = env.step(node, use_exec, carbon_aware = cw)
-                total_reward += reward
-        elif scheme == 'cap_decima':
-            # refresh tensorflow completely
-            tf.compat.v1.reset_default_graph() 
-            tf.compat.v1.set_random_seed(args.seed)
-            sess = tf.compat.v1.Session()
-            agent = CarbonActorAgent(
-                sess, args.node_input_dim, args.job_input_dim,
-                args.hid_dims, args.output_dim, args.max_depth,
-                range(1, args.exec_cap + 1), carbon_dict)
-            while not done:
-                node, use_exec, cw = agent.get_action(obs)
-                if i % 10 == 0:
-                    print('.', end='', flush=True)
-                i += 1
-                obs, reward, done = env.step(node, use_exec, carbon_aware = cw)
-                total_reward += reward
-        elif scheme == 'cap_fifo' or scheme == 'cap_partition' or scheme == 'green_hadoop':
-            while not done:
-                # print a single dot every 10 steps to indicate progress (all on same line)
-                if i % 10 == 0:
-                    print('.', end='', flush=True)
-                i += 1
-                node, use_exec, cw = agent.get_action(obs)
-                if i % 10 == 0:
-                    print('.', end='', flush=True)
-                i += 1
-                obs, reward, done = env.step(node, use_exec, carbon_aware = cw)
-                total_reward += reward
-
-        all_total_reward[scheme].append(total_reward)
-        
-        job_dags = env.finished_job_dags
-
-        job_durations = [
-            job_dag.completion_time - job_dag.start_time
-            for job_dag in job_dags
-        ]
-        
-        # Calculate carbon for every power model using this one completed
-        # schedule. The schedule is not rerun for different power models.
-        default_carbon_value = carbon_dict[next(iter(carbon_dict))]
-        schedule_end = int(env.wall_time.curr_time)
-
-        print("")
-        for model in power_models:
-            pidle = model['pidle']
-            pdyn = model['pdyn']
-
-            total_dynamic_carbon_usage = 0.0
-            total_idle_carbon_usage = 0.0
-
-            # Dynamic emissions: task runtime * P_DYN_W * carbon intensity.
-            for job_dag in env.finished_job_dags:
-                for node in job_dag.nodes:
-                    for task in node.tasks:
-                        start = int(task.start_time)
-                        finish = int(task.finish_time)
-
-                        start_key = start - (start % 60000)
-                        end_key = finish - (finish % 60000)
-
-                        for key in range(start_key, end_key + 1, 60000):
-                            carbon_value = carbon_dict.get(
-                                key,
-                                default_carbon_value
-                            )
-
-                            bucket_start = max(start, key)
-                            bucket_end = min(finish, key + 60000)
-                            duration = bucket_end - bucket_start
-
-                            total_dynamic_carbon_usage += (
-                                duration * pdyn * carbon_value
-                            )
-
-            # Always-on idle emissions: every provisioned executor consumes
-            # P_IDLE_W from time 0 until the schedule ends.
-            for key in range(0, schedule_end, 60000):
-                bucket_end = min(key + 60000, schedule_end)
-                duration = bucket_end - key
-                carbon_value = carbon_dict.get(
-                    key,
-                    default_carbon_value
-                )
-
-                total_idle_carbon_usage += (
-                    args.exec_cap
-                    * pidle
-                    * duration
-                    * carbon_value
-                )
-
-            total_carbon_usage = (
-                total_dynamic_carbon_usage
-                + total_idle_carbon_usage
-            )
-            
             scheme_results_by_model[model["name"]].append((
                 scheme,
                 env.wall_time.curr_time,
@@ -270,29 +227,21 @@ for exp in range(args.num_exp):
                 "experiment": exp + 1,
                 "scheme": scheme,
                 "power_model": model["name"],
-                "pidle": pidle,
-                "pdyn": pdyn,
-                "dynamic_carbon_usage":
-                    total_dynamic_carbon_usage,
-                "idle_carbon_usage":
-                    total_idle_carbon_usage,
-                "total_carbon_usage":
-                    total_carbon_usage,
+                "pidle": model['pidle'],
+                "pdyn": model['pdyn'],
+                "dynamic_carbon_usage": total_dynamic_carbon_usage,
+                "idle_carbon_usage": total_idle_carbon_usage,
+                "total_carbon_usage": total_carbon_usage,
             })
 
+            print("")
             print(
-                f""
                 f"Carbon usage — experiment {exp + 1}, "
                 f"scheme {scheme}, model {model['name']}: "
                 f"dynamic={total_dynamic_carbon_usage:.2f}, "
                 f"idle={total_idle_carbon_usage:.2f}, "
                 f"total={total_carbon_usage:.2f}"
             )
-        
-       
-        # Add scheme data to results
-        job_dags = env.finished_job_dags
-        job_durations = [job_dag.completion_time - job_dag.start_time for job_dag in job_dags]
         
     '''
     print("Creating graphs\n")

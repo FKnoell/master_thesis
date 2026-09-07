@@ -63,7 +63,7 @@ def main():
 
     plt.xlabel(r"$P_{\mathrm{idle}} / (P_{\mathrm{idle}} + P_{\mathrm{dyn}})$")
     plt.ylabel(r"Carbon savings vs. {} (\%)".format(args.baseline))
-    plt.title("Effect of $P_{\mathrm{idle}}$ share on carbon savings (all schedulers)")
+    plt.title(r"Effect of $P_{\mathrm{idle}}$ share on carbon savings (all schedulers)")
     plt.legend(title="Scheduler", fontsize=9, title_fontsize=10)
     plt.grid(True, linestyle="--", alpha=0.4)
     plt.tight_layout()

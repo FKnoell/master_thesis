@@ -21,6 +21,9 @@ parser.add_argument('--model_folder', type=str, default='./simulator/models/',
                     help='Model folder path (default: ./simulator/models)')
 parser.add_argument('--carbon_trace', type=str, default='./simulator/sample-carbon-trace.csv',
                     help='Carbon trace path (default: ./simulator/sample-carbon-trace.csv)')
+parser.add_argument('--pidle_range', type=float, default=[0.0, 1.0, 0.01],
+                    nargs=3, metavar=('START', 'STOP', 'STEP'),
+                    help='P_IDLE sweep range: start, stop, and step (default: 0.0 1.0 0.01)')
 
 # -- Environment --
 parser.add_argument('--exec_cap', type=int, default=100,

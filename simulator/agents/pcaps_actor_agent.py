@@ -32,10 +32,11 @@ v1.disable_v2_behavior()
 class PCAPSAgent(Agent):
     def __init__(self, sess, node_input_dim, job_input_dim, hid_dims, output_dim,
                  max_depth, executor_levels, carbon_schedule, eps=1e-6, act_fn=leaky_relu,
-                 optimizer=tf.compat.v1.train.AdamOptimizer, scope='actor_agent', gamma=0.5):
+                 optimizer=tf.compat.v1.train.AdamOptimizer, scope='actor_agent', gamma=0.5,
+                 pidle=0.0, pdyn=1.0):
 
 
-        Agent.__init__(self)
+        Agent.__init__(self, pidle=pidle, pdyn=pdyn)
 
         self.sess = sess
         self.node_input_dim = node_input_dim
