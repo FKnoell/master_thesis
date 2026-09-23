@@ -68,6 +68,9 @@ baseline = (
     .rename(columns={"total_carbon_usage": "spark_fifo_carbon"})
 )
 
+if baseline.empty:
+    raise ValueError("No Spark FIFO baseline rows were found.")
+
 comparison = df[df["scheme"] != "spark_fifo"].merge(
     baseline,
     on=["experiment", "power_model", "pidle_key"],
@@ -77,7 +80,7 @@ comparison = df[df["scheme"] != "spark_fifo"].merge(
 if comparison.empty:
     raise ValueError("No matching Spark FIFO baseline rows were found.")
 
-# Calculate the improvement for each individual experiment and pidle value.
+# Calculate improvement separately for every individual value.
 comparison["carbon_improvement"] = (
     (comparison["spark_fifo_carbon"] - comparison["total_carbon_usage"])
     / comparison["spark_fifo_carbon"]
@@ -88,6 +91,7 @@ comparison = comparison.replace(
     [float("inf"), float("-inf")], pd.NA
 ).dropna(subset=["carbon_improvement"])
 
+# Use readable labels where available; keep unknown CSV schemes unchanged.
 labels = {
     "cap_decima": "CAP DECIMA",
     "cap_fifo": "CAP FIFO",
@@ -97,30 +101,38 @@ labels = {
     "pcaps": "PCAPS",
     "spark_fifo_better": "Spark FIFO improved",
 }
-
 comparison["scheduler"] = (
     comparison["scheme"].map(labels).fillna(comparison["scheme"])
 )
 
-scheduler_order = [
-    "CAP DECIMA",
-    "CAP FIFO",
-    "CAP FIFO improved",
-    "CAP FIFO backfill",
-    "CAP partition",
-    "PCAPS",
-    "Spark FIFO improved",
-]
-scheduler_order = [
-    item for item in scheduler_order
-    if item in comparison["scheduler"].unique()
-]
-
-# Create labels in the requested order.
+# Keep the requested pidle order.
 pidle_labels = [f"{value:g}" for value in SELECTED_PIDLE]
 pidle_label_map = dict(zip(selected_keys, pidle_labels))
 comparison["pidle_label"] = comparison["pidle_key"].map(pidle_label_map)
 
+# -----------------------------------------------------------------------------
+# Overall scheduler ordering
+# -----------------------------------------------------------------------------
+# A scheduler's score is its median carbon improvement across all selected
+# pidle values and all experiments. Lower is worse; higher is better.
+overall_order = (
+    comparison
+    .groupby("scheduler")["carbon_improvement"]
+    .median()
+    .sort_values(ascending=True)
+    .index
+    .tolist()
+)
+
+print("\nOverall scheduler order (worst to best):\n")
+for position, scheduler in enumerate(overall_order, start=1):
+    score = comparison.loc[
+        comparison["scheduler"] == scheduler,
+        "carbon_improvement",
+    ].median()
+    print(f"{position}. {scheduler}: median improvement = {score:.2f}%")
+
+'''
 # Print the 75th percentile for every pidle and scheduler.
 percentile_75 = (
     comparison
@@ -131,8 +143,11 @@ percentile_75 = (
 
 print("\n75th-percentile carbon improvement by pidle and scheduler:\n")
 print(percentile_75.round(2).to_string(index=False))
+'''
 
-# Create 9 subplots: one graph per pidle value.
+# -----------------------------------------------------------------------------
+# Plot nine subplots with the same global scheduler order
+# -----------------------------------------------------------------------------
 sns.set_theme(style="whitegrid", context="paper")
 fig, axes = plt.subplots(
     nrows=3,
@@ -148,23 +163,21 @@ for index, pidle_label in enumerate(pidle_labels):
         comparison["pidle_label"] == pidle_label
     ]
 
-    # Each box contains the individual experiment values.
     sns.boxplot(
         data=plot_data,
         x="scheduler",
         y="carbon_improvement",
-        order=scheduler_order,
+        order=overall_order,
         showfliers=False,
         width=0.65,
         ax=ax,
     )
 
-    # Optional: show the individual experiment values lightly.
     sns.stripplot(
         data=plot_data,
         x="scheduler",
         y="carbon_improvement",
-        order=scheduler_order,
+        order=overall_order,
         color="black",
         alpha=0.25,
         size=3,
@@ -174,13 +187,13 @@ for index, pidle_label in enumerate(pidle_labels):
 
     ax.axhline(0, color="black", linestyle="--", linewidth=0.8)
     ax.set_title(rf"$P_{{idle}} = {pidle_label}$")
-    ax.set_xlabel("Scheduler")
+    ax.set_xlabel("Scheduler (worst to best overall)")
     ax.set_ylabel("Carbon improvement compared with Spark FIFO (%)")
     ax.tick_params(axis="x", rotation=35)
 
 fig.suptitle(
     "Carbon improvement compared with Spark FIFO\n"
-    "Experiments grouped for each selected $P_{idle}$ value",
+    "Schedulers ordered from worst to best using the overall median",
     fontsize=17,
     y=1.02,
 )

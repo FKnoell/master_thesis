@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib
+
+
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from spark_env.env import Environment
@@ -11,9 +13,11 @@ from agents.actor_agent import ActorAgent
 from agents.carbon_aware_actor_agent import CarbonActorAgent
 from agents.pcaps_actor_agent import PCAPSAgent
 from agents.carbon_aware_fifo_agent import CarbonAgent
-from agents.cap_fifo_backfill_agent import CarbonAgent as CarbonBackfillAgent
-from agents.cap_fifo_better_agent import CarbonAgent as CarbonBetterAgent
 from agents.green_hadoop_agent import GreenHadoopThetaAgent
+from agents.new_cap_fifo_agent import CarbonAgent as NewCarbonAgent
+from agents.new_cap_heuristic_agent import CarbonPartitionAgent as NewCarbonPartitionAgent
+from agents.new_cap_decima_agent import CarbonActorAgent as NewCarbonActorAgent
+from agents.new_pcaps_actor_agent import PCAPSAgent as NewPCAPSAgent
 from spark_env.canvas import *
 from param import *
 from utils import *
@@ -76,7 +80,7 @@ for scheme in args.test_schemes:
             sess, args.node_input_dim, args.job_input_dim,
             args.hid_dims, args.output_dim, args.max_depth,
             range(1, args.exec_cap + 1))
-    elif scheme == 'pcaps' or scheme == 'cap_decima':
+    elif scheme == 'pcaps' or scheme == 'pcaps_new' or scheme == 'cap_decima' or scheme == 'cap_decima_new':
         agents[scheme] = None
     elif scheme == 'dynamic_partition':
         agents[scheme] = DynamicPartitionAgent()
@@ -84,12 +88,12 @@ for scheme in args.test_schemes:
         agents[scheme] = SparkAgent(exec_cap=args.exec_cap)
     elif scheme == 'cap_fifo':
         agents[scheme] = CarbonAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
-    elif scheme == 'cap_fifo_backfill':
-        agents[scheme] = CarbonBackfillAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
-    elif scheme == 'cap_fifo_better':
-        agents[scheme] = CarbonBetterAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
+    elif scheme == 'cap_fifo_new':
+        agents[scheme] = NewCarbonAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
     elif scheme == 'cap_partition':
         agents[scheme] = CarbonPartitionAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
+    elif scheme == 'cap_partition_new':
+        agents[scheme] = NewCarbonPartitionAgent(exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
     elif scheme == 'green_hadoop':
         agents[scheme] = GreenHadoopThetaAgent(exec_cap=args.exec_cap, renewable_dict=renewable_dict)
     else:
@@ -135,7 +139,7 @@ for exp in range(args.num_exp):
         total_reward = 0
         done = False
         i = 0
-        if scheme != 'pcaps' and scheme != 'cap_fifo' and scheme != 'cap_fifo_backfill' and scheme != 'cap_fifo_better' and scheme != 'cap_partition' and scheme != 'cap_decima' and scheme != 'green_hadoop':
+        if scheme != 'pcaps' and scheme != 'pcaps_new' and scheme != 'cap_fifo' and scheme != 'cap_fifo_new' and scheme != 'cap_partition' and scheme != 'cap_partition_new' and scheme != 'cap_decima' and scheme != 'cap_decima_new' and scheme != 'green_hadoop':
             while not done:
                 # print a single dot every 10 steps to indicate progress (all on same line)
                 if i % 10 == 0:
@@ -168,6 +172,30 @@ for exp in range(args.num_exp):
                 i += 1
                 obs, reward, done = env.step(node, use_exec, carbon_aware = cw)
                 total_reward += reward
+        elif scheme == 'pcaps_new':
+                    # refresh tensorflow completely
+                    tf.compat.v1.reset_default_graph() 
+                    tf.compat.v1.set_random_seed(args.seed)
+                    
+                    '''
+                    # Set a fixed seed for TensorFlow to ensure reproducibility
+                    FIXED_TF_SEED = 42
+                    tf.compat.v1.set_random_seed(FIXED_TF_SEED)
+                    '''
+                    
+                    sess = tf.compat.v1.Session()
+                    # initialize scheduler
+                    agent = PCAPSAgent(
+                        sess, args.node_input_dim, args.job_input_dim,
+                        args.hid_dims, args.output_dim, args.max_depth,
+                        range(1, args.exec_cap + 1), carbon_dict)
+                    while not done:
+                        node, use_exec, cw = agent.get_action(obs)
+                        if i % 10 == 0:
+                            print('.', end='', flush=True)
+                        i += 1
+                        obs, reward, done = env.step(node, use_exec, carbon_aware = cw)
+                        total_reward += reward
         elif scheme == 'cap_decima':
             # refresh tensorflow completely
             tf.compat.v1.reset_default_graph() 
@@ -184,16 +212,30 @@ for exp in range(args.num_exp):
                 i += 1
                 obs, reward, done = env.step(node, use_exec, carbon_aware = cw)
                 total_reward += reward
-        elif scheme == 'cap_fifo' or scheme == 'cap_fifo_backfill' or scheme == 'cap_fifo_better' or scheme == 'cap_partition' or scheme == 'green_hadoop':
+        elif scheme == 'cap_decima_new':
+                    # refresh tensorflow completely
+                    tf.compat.v1.reset_default_graph() 
+                    tf.compat.v1.set_random_seed(args.seed)
+                    sess = tf.compat.v1.Session()
+                    agent = NewCarbonActorAgent(
+                        sess, args.node_input_dim, args.job_input_dim,
+                        args.hid_dims, args.output_dim, args.max_depth,
+                        range(1, args.exec_cap + 1), carbon_dict)
+                    while not done:
+                        node, use_exec, cw = agent.get_action(obs)
+                        if i % 10 == 0:
+                            print('.', end='', flush=True)
+                        i += 1
+                        obs, reward, done = env.step(node, use_exec, carbon_aware = cw)
+                        total_reward += reward
+        elif scheme == 'cap_fifo' or scheme == 'cap_fifo_backfill' or scheme == 'cap_fifo_new' or scheme == 'cap_partition' or  scheme == 'cap_partition_new' or scheme == 'cap_decima' or scheme == 'cap_decima_new' or scheme == 'green_hadoop':
             while not done:
                 # print a single dot every 10 steps to indicate progress (all on same line)
                 if i % 10 == 0:
                     print('.', end='', flush=True)
                 i += 1
                 node, use_exec, cw = agent.get_action(obs)
-                if i % 10 == 0:
-                    print('.', end='', flush=True)
-                i += 1
+
                 obs, reward, done = env.step(node, use_exec, carbon_aware = cw)
                 total_reward += reward
 
@@ -286,6 +328,7 @@ for exp in range(args.num_exp):
                     total_carbon_usage,
             })
 
+            '''
             print(
                 f""
                 f"Carbon usage — experiment {exp + 1}, "
@@ -294,6 +337,7 @@ for exp in range(args.num_exp):
                 f"idle={total_idle_carbon_usage:.2f}, "
                 f"total={total_carbon_usage:.2f}"
             )
+            '''
         
        
         # Add scheme data to results
