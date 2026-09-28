@@ -11,6 +11,7 @@ from agents.actor_agent import ActorAgent
 from agents.carbon_aware_actor_agent import CarbonActorAgent
 from agents.pcaps_actor_agent import PCAPSAgent
 from agents.carbon_aware_fifo_agent import CarbonAgent
+from agents.carbon_power_agent import CarbonPowerAgent
 from agents.green_hadoop_agent import GreenHadoopThetaAgent
 from spark_env.canvas import *
 from param import *
@@ -113,6 +114,10 @@ def create_agent(scheme, power_model, experiment_seed):
         return CarbonPartitionAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
             pidle=pidle, pdyn=pdyn)
+    if scheme == 'cap_power':
+        return CarbonPowerAgent(
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
+            pidle=pidle, pdyn=pdyn)
     if scheme == 'green_hadoop':
         return GreenHadoopThetaAgent(
             exec_cap=args.exec_cap, renewable_dict=renewable_dict)
@@ -133,7 +138,7 @@ def run_scheme(env, scheme, agent):
         step += 1
 
         if scheme in ('pcaps', 'cap_decima', 'cap_fifo',
-                      'cap_partition', 'green_hadoop'):
+                      'cap_partition', 'cap_power', 'green_hadoop'):
             node, use_exec, carbon_aware = agent.get_action(obs)
             obs, reward, done = env.step(
                 node, use_exec, carbon_aware=carbon_aware)
