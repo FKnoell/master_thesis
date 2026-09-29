@@ -1,5 +1,7 @@
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('ABSL_MIN_LOG_LEVEL', '1')
 import time
 import numpy as np
 import tensorflow as tf
@@ -120,6 +122,7 @@ def invoke_model(actor_agent, obs, exp, printProbs=False):
 def train_agent(agent_id, param_queue, reward_queue, adv_queue, gradient_queue, prob_queue):
     # model evaluation seed
     tf.compat.v1.set_random_seed(agent_id)
+    print('starting worker', agent_id, flush=True)
 
     # set up environment
     env = Environment()
@@ -137,19 +140,38 @@ def train_agent(agent_id, param_queue, reward_queue, adv_queue, gradient_queue, 
         sess, args.node_input_dim, args.job_input_dim,
         args.hid_dims, args.output_dim, args.max_depth,
         range(1, args.exec_cap + 1))
+    print('worker ready', agent_id, flush=True)
 
     # collect experiences
     while True:
 
         # get parameters from master
-        (actor_params, seed, max_time, entropy_weight) = \
-            param_queue.get()
+        work_item = param_queue.get()
+        if work_item is None:
+            print('stopping worker', agent_id, flush=True)
+            return
+        (actor_params, seed, max_time, entropy_weight) = work_item
         
         # synchronize model
         actor_agent.set_params(actor_params)
 
         # reset environment
         env.seed(seed)
+        power_rng = np.random.RandomState(seed)
+        if args.pidle is None:
+            pidle_min, pidle_max = args.pidle_range
+            if not 0.0 <= pidle_min <= pidle_max <= 1.0:
+                raise ValueError('--pidle_range must satisfy 0 <= MIN <= MAX <= 1')
+            pidle = power_rng.uniform(pidle_min, pidle_max)
+        else:
+            pidle = args.pidle
+        pdyn = 1.0 - pidle if args.pdyn is None else args.pdyn
+        if not 0.0 <= pidle <= 1.0 or not 0.0 <= pdyn <= 1.0:
+            raise ValueError('--pidle and --pdyn must be between 0 and 1')
+        env.pidle = pidle
+        env.pdyn = pdyn
+        actor_agent.pidle = pidle
+        actor_agent.pdyn = pdyn
         env.reset(max_time=max_time)
 
         # set up storage for experience
@@ -249,6 +271,8 @@ def main():
     # create result and model folder
     create_folder_if_not_exists(args.result_folder)
     create_folder_if_not_exists(args.model_folder)
+    print('starting Decima training with', args.num_agents,
+          'workers', flush=True)
 
     # initialize communication queues
     params_queues = [mp.Queue(1) for _ in range(args.num_agents)]
@@ -267,6 +291,7 @@ def main():
     # start training agents
     for i in range(args.num_agents):
         agents[i].start()
+    print('all workers started', flush=True)
 
     # gpu configuration
     config = tf.compat.v1.ConfigProto(
@@ -301,7 +326,7 @@ def main():
 
     # ---- start training process ----
     for ep in range(9300, args.num_ep):
-        print('training epoch', ep)
+        print('training epoch', ep, flush=True)
 
         # synchronize the model parameters for each training agent
         actor_params = actor_agent.get_params()
@@ -350,11 +375,11 @@ def main():
                 batch_reward, diff_time)
 
         t2 = time.time()
-        print('got reward from workers', t2 - t1, 'seconds')
+        print('got reward from workers', t2 - t1, 'seconds', flush=True)
 
         # check if any agent panic
         if any_agent_panic:
-            print('some agent panic skip')
+            print('some agent panic skip', flush=True)
             continue
 
         # compute differential reward
@@ -385,7 +410,7 @@ def main():
             adv_queues[i].put(batch_adv)
 
         t3 = time.time()
-        print('advantage ready', t3 - t2, 'seconds')
+        print('advantage ready', t3 - t2, 'seconds', flush=True)
 
         actor_gradients = []
         all_action_loss = []  # for tensorboard
@@ -402,13 +427,13 @@ def main():
             all_value_loss.append(loss[2])
 
         t4 = time.time()
-        print('worker send back gradients', t4 - t3, 'seconds')
+        print('worker send back gradients', t4 - t3, 'seconds', flush=True)
 
         actor_agent.apply_gradients(
             aggregate_gradients(actor_gradients), args.lr)
 
         t5 = time.time()
-        print('apply gradient', t5 - t4, 'seconds')
+        print('apply gradient', t5 - t4, 'seconds', flush=True)
 
         # tf_logger.log(ep, [
         #     np.mean(all_action_loss),
@@ -434,6 +459,13 @@ def main():
         if ep % args.model_save_interval == 0:
             actor_agent.save_model(args.model_folder + \
                 'model_ep_' + str(ep))
+            print('saved model at epoch', ep, flush=True)
+
+    # Stop workers that are waiting for the next parameter update.
+    for i in range(args.num_agents):
+        params_queues[i].put(None)
+    for agent in agents:
+        agent.join()
 
     sess.close()
 

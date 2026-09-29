@@ -22,6 +22,14 @@ parser.add_argument('--model_folder', type=str, default='./simulator/models/',
 parser.add_argument('--carbon_trace', type=str, default='./simulator/sample-carbon-trace.csv',
                     help='Carbon trace path (default: ./simulator/sample-carbon-trace.csv)')
 
+parser.add_argument('--pidle', type=float, default=None,
+                    help='fixed idle power; omit to sample from pidle_range')
+parser.add_argument('--pdyn', type=float, default=None,
+                    help='fixed dynamic power; omit to use 1 - pidle')
+parser.add_argument('--pidle_range', type=float, default=[0.0, 1.0], nargs=2,
+                    metavar=('MIN', 'MAX'),
+                    help='range for per-rollout pidle sampling (default: 0.0 1.0)')
+
 # -- Environment --
 parser.add_argument('--exec_cap', type=int, default=100,
                     help='Number of total executors (default: 100)')
@@ -85,10 +93,10 @@ parser.add_argument('--canvas_base', type=int, default=-10,
                     help='Canvas color scale bottom (default: -10)')
 
 # -- Learning --
-parser.add_argument('--node_input_dim', type=int, default=5,
-                    help='node input dimensions to graph embedding (default: 5)')
-parser.add_argument('--job_input_dim', type=int, default=3,
-                    help='job input dimensions to graph embedding (default: 3)')
+parser.add_argument('--node_input_dim', type=int, default=7,
+                    help='node input dimensions to graph embedding (default: 7)')
+parser.add_argument('--job_input_dim', type=int, default=5,
+                    help='job input dimensions to graph embedding (default: 5)')
 parser.add_argument('--hid_dims', type=int, default=[16, 8], nargs='+',
                     help='hidden dimensions throughout graph embedding (default: [16, 8])')
 parser.add_argument('--output_dim', type=int, default=8,
@@ -133,8 +141,8 @@ parser.add_argument('--num_ep', type=int, default=10000000,
                     help='Number of training epochs (default: 10000000)')
 parser.add_argument('--learn_obj', type=str, default='mean',
                     help='Learning objective (default: mean)')
-parser.add_argument('--saved_model', type=str, default='./simulator/models/stream_200_job_diff_reward_reset_5e-7_5e-8/model_ep_10000',
-                    help='Path to the saved tf model (default: ./simulator/models/stream_200_job_diff_reward_reset_5e-7_5e-8/model_ep_10000)')
+parser.add_argument('--saved_model', type=str, default=None,
+                    help='Path to a compatible saved TensorFlow model (default: start fresh)')
 parser.add_argument('--check_interval', type=float, default=0.01,
                     help='interval for master to check gradient report (default: 10ms)')
 parser.add_argument('--model_save_interval', type=int, default=1000,

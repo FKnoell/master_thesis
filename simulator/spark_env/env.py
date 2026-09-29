@@ -18,7 +18,10 @@ from spark_env.node import Node
 
 
 class Environment(object):
-    def __init__(self, carbon_schedule = None):
+    def __init__(self, carbon_schedule=None, pidle=0.0, pdyn=1.0):
+
+        self.pidle = pidle
+        self.pdyn = pdyn
 
         # isolated random number generator
         self.np_random = np.random.RandomState()
@@ -103,6 +106,27 @@ class Environment(object):
     
     def compute_carbon_usage(self, start_time, end_time):
         return 0.0 # making this a stub to speed things up
+
+    def compute_power_usage(self, start_time, end_time):
+        duration = max(0.0, end_time - start_time)
+        dynamic_duration = 0.0
+
+        job_dags = list(self.job_dags) + list(self.finished_job_dags)
+        seen_jobs = set()
+        for job_dag in job_dags:
+            if id(job_dag) in seen_jobs:
+                continue
+            seen_jobs.add(id(job_dag))
+            for node in job_dag.nodes:
+                for task in node.tasks:
+                    if np.isnan(task.start_time):
+                        continue
+                    overlap_start = max(start_time, task.start_time)
+                    overlap_end = min(end_time, task.finish_time)
+                    dynamic_duration += max(0.0, overlap_end - overlap_start)
+
+        return self.pidle * len(self.executors) * duration + \
+            self.pdyn * dynamic_duration
 
 
     def add_job(self, job_dag):
@@ -481,8 +505,11 @@ class Environment(object):
                 exit(1)
 
         # Compute reward
+        reward_start_time = self.reward_calculator.prev_time
         reward = self.reward_calculator.get_reward(
             self.job_dags, self.wall_time.curr_time)
+        reward -= self.compute_power_usage(
+            reward_start_time, self.wall_time.curr_time) / args.reward_scale
         if carbon_aware:
             reward = 0
 

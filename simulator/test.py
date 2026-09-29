@@ -1,3 +1,8 @@
+import os
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('ABSL_MIN_LOG_LEVEL', '1')
+
 import numpy as np
 import tensorflow as tf
 import matplotlib
@@ -44,7 +49,9 @@ for i in range(len(r)):
     renewable_dict[60000*i] = r[i]
 
 # set up environment
-env = Environment(carbon_schedule=carbon_dict)
+pidle = 0.0 if args.pidle is None else args.pidle
+pdyn = 1.0 - pidle if args.pdyn is None else args.pdyn
+env = Environment(carbon_schedule=carbon_dict, pidle=pidle, pdyn=pdyn)
 
 # set up agents
 agents = {}
@@ -56,7 +63,7 @@ for scheme in args.test_schemes:
         agents[scheme] = ActorAgent(
             sess, args.node_input_dim, args.job_input_dim,
             args.hid_dims, args.output_dim, args.max_depth,
-            range(1, args.exec_cap + 1))
+            range(1, args.exec_cap + 1), pidle=pidle, pdyn=pdyn)
     elif scheme == 'pcaps' or scheme == 'cap_decima':
         agents[scheme] = None
     elif scheme == 'dynamic_partition':
@@ -133,7 +140,8 @@ for exp in range(args.num_exp):
             agent = CarbonActorAgent(
                 sess, args.node_input_dim, args.job_input_dim,
                 args.hid_dims, args.output_dim, args.max_depth,
-                range(1, args.exec_cap + 1), carbon_dict)
+                range(1, args.exec_cap + 1), carbon_dict,
+                pidle=pidle, pdyn=pdyn)
             while not done:
                 node, use_exec, cw = agent.get_action(obs)
                 if i % 10 == 0:

@@ -10,9 +10,13 @@
 # pcaps_actor_agent implements PCAPS (Precedence- and Carbon-Aware Provisioning and Scheduling)
 # on top of the Decima scheduler.
 
+import os
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('ABSL_MIN_LOG_LEVEL', '1')
+
 import numpy as np
 import tensorflow as tf
-import tf_slim as slim
 import tensorflow.compat.v1 as v1
 import bisect
 import random
@@ -26,13 +30,13 @@ from agents.agent import Agent
 from spark_env.job_dag import JobDAG
 from spark_env.node import Node
 
+tf.get_logger().setLevel('ERROR')
 tf.compat.v1.disable_eager_execution()
-v1.disable_v2_behavior()
 
 class PCAPSAgent(Agent):
     def __init__(self, sess, node_input_dim, job_input_dim, hid_dims, output_dim,
                  max_depth, executor_levels, carbon_schedule, eps=1e-6, act_fn=leaky_relu,
-                 optimizer=tf.compat.v1.train.AdamOptimizer, scope='actor_agent', gamma=0.5):
+                 optimizer=None, scope='actor_agent', gamma=0.5):
 
 
         Agent.__init__(self)
@@ -46,7 +50,7 @@ class PCAPSAgent(Agent):
         self.executor_levels = executor_levels
         self.eps = eps
         self.act_fn = act_fn
-        self.optimizer = optimizer
+        self.optimizer = tf.compat.v1.train.AdamOptimizer if optimizer is None else optimizer
         self.carbon_schedule = carbon_schedule
         self.scope = scope
         self.gamma = gamma
@@ -231,10 +235,10 @@ class PCAPSAgent(Agent):
                 gsn_dag_summ_extend,
                 gsn_global_summ_extend_node], axis=2)
 
-            node_hid_0 = slim.fully_connected(merge_node, 32, activation_fn=act_fn)
-            node_hid_1 = slim.fully_connected(node_hid_0, 16, activation_fn=act_fn)
-            node_hid_2 = slim.fully_connected(node_hid_1, 8, activation_fn=act_fn)
-            node_outputs = slim.fully_connected(node_hid_2, 1, activation_fn=None)
+            node_hid_0 = tf.keras.layers.Dense(32, activation=act_fn, name='node_hid_0')(merge_node)
+            node_hid_1 = tf.keras.layers.Dense(16, activation=act_fn, name='node_hid_1')(node_hid_0)
+            node_hid_2 = tf.keras.layers.Dense(8, activation=act_fn, name='node_hid_2')(node_hid_1)
+            node_outputs = tf.keras.layers.Dense(1, activation=None, name='node_outputs')(node_hid_2)
 
             # reshape the output dimension (batch_size, total_num_nodes)
             node_outputs = tf.reshape(node_outputs, [batch_size, -1])
@@ -257,10 +261,10 @@ class PCAPSAgent(Agent):
             expanded_state = expand_act_on_state(
                 merge_job, [l / 50.0 for l in self.executor_levels])
 
-            job_hid_0 = slim.fully_connected(expanded_state, 32, activation_fn=act_fn)
-            job_hid_1 = slim.fully_connected(job_hid_0, 16, activation_fn=act_fn)
-            job_hid_2 = slim.fully_connected(job_hid_1, 8, activation_fn=act_fn)
-            job_outputs = slim.fully_connected(job_hid_2, 1, activation_fn=None)
+            job_hid_0 = tf.keras.layers.Dense(32, activation=act_fn, name='job_hid_0')(expanded_state)
+            job_hid_1 = tf.keras.layers.Dense(16, activation=act_fn, name='job_hid_1')(job_hid_0)
+            job_hid_2 = tf.keras.layers.Dense(8, activation=act_fn, name='job_hid_2')(job_hid_1)
+            job_outputs = tf.keras.layers.Dense(1, activation=None, name='job_outputs')(job_hid_2)
 
             # reshape the output dimension (batch_size, num_jobs * num_exec_limits)
             job_outputs = tf.reshape(job_outputs, [batch_size, -1])
