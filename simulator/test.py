@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib
+
+
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from spark_env.env import Environment
@@ -13,6 +15,10 @@ from agents.pcaps_actor_agent import PCAPSAgent
 from agents.carbon_aware_fifo_agent import CarbonAgent
 from agents.carbon_power_agent import CarbonPowerAgent
 from agents.green_hadoop_agent import GreenHadoopThetaAgent
+from agents.new_cap_fifo_agent import CarbonAgent as NewCarbonAgent
+from agents.new_cap_heuristic_agent import CarbonPartitionAgent as NewCarbonPartitionAgent
+from agents.new_cap_decima_agent import CarbonActorAgent as NewCarbonActorAgent
+from agents.new_pcaps_actor_agent import PCAPSAgent as NewPCAPSAgent
 from spark_env.canvas import *
 from param import *
 from utils import *
@@ -40,8 +46,14 @@ power_models = [
 ]
 
 # Only cap_power uses the power model while making scheduling decisions.
-# Other schedulers are evaluated once with the legacy dynamic-only model.
+# Other schedulers, including the updated legacy agents, are evaluated once
+# with the legacy dynamic-only model.
 power_aware_schemes = {'cap_power'}
+carbon_aware_schemes = {
+    'cap_fifo', 'cap_partition', 'cap_power', 'new_cap_fifo',
+    'new_cap_decima', 'new_pcaps',
+    'pcaps', 'cap_decima', 'green_hadoop'
+}
 baseline_power_model = {"name": "baseline", "pidle": 0.0, "pdyn": 1.0}
 
 # create result folder
@@ -59,8 +71,7 @@ c = df["carbon_intensity_avg"]
 r = df['power_production_percent_renewable_avg']
 
 # pick a random start time in the trace
-trace_rng = np.random.RandomState(args.seed)
-start_time = trace_rng.randint(0, len(c) - 100)
+start_time = np.random.randint(0, len(c) - 100)
 c = c[start_time:start_time + 100].to_list()
 r = r[start_time:start_time + 100].to_list()
 
@@ -116,6 +127,28 @@ def create_agent(scheme, power_model, experiment_seed):
     if scheme == 'cap_partition':
         return CarbonPartitionAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
+    if scheme == 'new_cap_fifo':
+        return NewCarbonAgent(
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
+    if scheme in ('new_cap_partition'):
+        return NewCarbonPartitionAgent(
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
+    if scheme == 'new_cap_decima':
+        tf.compat.v1.reset_default_graph()
+        tf.compat.v1.set_random_seed(int(experiment_seed))
+        sess = tf.compat.v1.Session()
+        return NewCarbonActorAgent(
+            sess, args.node_input_dim, args.job_input_dim,
+            args.hid_dims, args.output_dim, args.max_depth,
+            range(1, args.exec_cap + 1), carbon_dict)
+    if scheme == 'new_pcaps':
+        tf.compat.v1.reset_default_graph()
+        tf.compat.v1.set_random_seed(int(experiment_seed))
+        sess = tf.compat.v1.Session()
+        return NewPCAPSAgent(
+            sess, args.node_input_dim, args.job_input_dim,
+            args.hid_dims, args.output_dim, args.max_depth,
+            range(1, args.exec_cap + 1), carbon_dict)
     if scheme == 'cap_power':
         return CarbonPowerAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
@@ -139,8 +172,7 @@ def run_scheme(env, scheme, agent):
             print('.', end='', flush=True)
         step += 1
 
-        if scheme in ('pcaps', 'cap_decima', 'cap_fifo',
-                      'cap_partition', 'cap_power', 'green_hadoop'):
+        if scheme in carbon_aware_schemes:
             node, use_exec, carbon_aware = agent.get_action(obs)
             obs, reward, done = env.step(
                 node, use_exec, carbon_aware=carbon_aware)
