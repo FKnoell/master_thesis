@@ -39,6 +39,11 @@ power_models = [
     for i, pidle in enumerate(pidle_values)
 ]
 
+# Only cap_power uses the power model while making scheduling decisions.
+# Other schedulers are evaluated once with the legacy dynamic-only model.
+power_aware_schemes = {'cap_power'}
+baseline_power_model = {"name": "baseline", "pidle": 0.0, "pdyn": 1.0}
+
 # create result folder
 if not os.path.exists(args.result_folder):
     os.makedirs(args.result_folder)
@@ -91,8 +96,7 @@ def create_agent(scheme, power_model, experiment_seed):
         return agent_class(
             sess, args.node_input_dim, args.job_input_dim,
             args.hid_dims, args.output_dim, args.max_depth,
-            range(1, args.exec_cap + 1), carbon_dict,
-            pidle=pidle, pdyn=pdyn)
+            range(1, args.exec_cap + 1), carbon_dict)
 
     if scheme == 'decima':
         tf.compat.v1.reset_default_graph()
@@ -101,19 +105,17 @@ def create_agent(scheme, power_model, experiment_seed):
         return ActorAgent(
             sess, args.node_input_dim, args.job_input_dim,
             args.hid_dims, args.output_dim, args.max_depth,
-            range(1, args.exec_cap + 1), pidle=pidle, pdyn=pdyn)
+            range(1, args.exec_cap + 1))
     if scheme == 'dynamic_partition':
         return DynamicPartitionAgent()
     if scheme == 'spark_fifo':
         return SparkAgent(exec_cap=args.exec_cap)
     if scheme == 'cap_fifo':
         return CarbonAgent(
-            exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
-            pidle=pidle, pdyn=pdyn)
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
     if scheme == 'cap_partition':
         return CarbonPartitionAgent(
-            exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
-            pidle=pidle, pdyn=pdyn)
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
     if scheme == 'cap_power':
         return CarbonPowerAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
@@ -203,20 +205,27 @@ scheme_results_by_model = {
     for model in power_models
 }
 
-for model in power_models:
-    print('Power model ' + model['name'])
+for exp in range(args.num_exp):
+    print('Experiment ' + str(exp + 1) + ' of ' + str(args.num_exp))
+    experiment_seed = int(experiment_seeds[exp])
 
-    for exp in range(args.num_exp):
-        print('Experiment ' + str(exp + 1) + ' of ' + str(args.num_exp))
-        experiment_seed = int(experiment_seeds[exp])
+    for scheme in args.test_schemes:
+        print('Scheme ' + scheme)
 
-        for scheme in args.test_schemes:
-            print('Scheme ' + scheme)
+        # Power-aware agents need a fresh schedule for every power model.
+        # Legacy agents produce one schedule that can be evaluated against
+        # every power model without rerunning the simulation.
+        schedule_models = (
+            power_models if scheme in power_aware_schemes
+            else [baseline_power_model]
+        )
+
+        for schedule_model in schedule_models:
             np.random.seed(experiment_seed)
             env = Environment(carbon_schedule=carbon_dict)
             env.seed(experiment_seed)
             env.reset()
-            agent = create_agent(scheme, model, experiment_seed)
+            agent = create_agent(scheme, schedule_model, experiment_seed)
             total_reward = run_scheme(env, scheme, agent)
             all_total_reward[scheme].append(total_reward)
 
@@ -224,35 +233,42 @@ for model in power_models:
                 job_dag.completion_time - job_dag.start_time
                 for job_dag in env.finished_job_dags
             ]
-            total_carbon_usage, total_dynamic_carbon_usage, \
-                total_idle_carbon_usage = calculate_carbon_usage(env, model)
 
-            scheme_results_by_model[model["name"]].append((
-                scheme,
-                env.wall_time.curr_time,
-                total_carbon_usage,
-                np.mean(job_durations)
-            ))
-
-            carbon_power_results.append({
-                "experiment": exp + 1,
-                "scheme": scheme,
-                "power_model": model["name"],
-                "pidle": model['pidle'],
-                "pdyn": model['pdyn'],
-                "dynamic_carbon_usage": total_dynamic_carbon_usage,
-                "idle_carbon_usage": total_idle_carbon_usage,
-                "total_carbon_usage": total_carbon_usage,
-            })
-
-            print("")
-            print(
-                f"Carbon usage — model {model['name']}, "
-                f"scheme {scheme}, experiment {exp + 1},: "
-                f"dynamic={total_dynamic_carbon_usage:.2f}, "
-                f"idle={total_idle_carbon_usage:.2f}, "
-                f"total={total_carbon_usage:.2f}"
+            models_to_evaluate = (
+                [schedule_model] if scheme in power_aware_schemes
+                else power_models
             )
+            for model in models_to_evaluate:
+                total_carbon_usage, total_dynamic_carbon_usage, \
+                    total_idle_carbon_usage = calculate_carbon_usage(
+                        env, model)
+
+                scheme_results_by_model[model["name"]].append((
+                    scheme,
+                    env.wall_time.curr_time,
+                    total_carbon_usage,
+                    np.mean(job_durations)
+                ))
+
+                carbon_power_results.append({
+                    "experiment": exp + 1,
+                    "scheme": scheme,
+                    "power_model": model["name"],
+                    "pidle": model['pidle'],
+                    "pdyn": model['pdyn'],
+                    "dynamic_carbon_usage": total_dynamic_carbon_usage,
+                    "idle_carbon_usage": total_idle_carbon_usage,
+                    "total_carbon_usage": total_carbon_usage,
+                })
+
+                print("")
+                print(
+                    f"Carbon usage — model {model['name']}, "
+                    f"scheme {scheme}, experiment {exp + 1},: "
+                    f"dynamic={total_dynamic_carbon_usage:.2f}, "
+                    f"idle={total_idle_carbon_usage:.2f}, "
+                    f"total={total_carbon_usage:.2f}"
+                )
         
     '''
     print("Creating graphs\n")
