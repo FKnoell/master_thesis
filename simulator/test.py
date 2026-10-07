@@ -19,6 +19,7 @@ from agents.new_cap_fifo_agent import CarbonAgent as NewCarbonAgent
 from agents.dynamic_b_cap_fifo_agent import DynamicBCapFIFOAgent
 from agents.lookahead_cap_fifo_agent import LookaheadCapFIFOAgent
 from agents.backfill_cap_fifo_agent import BackfillCapFIFOAgent
+from agents.efficiency_cap_fifo_agent import EfficiencyCapFIFOAgent
 from agents.weighted_cap_fifo_agent import CarbonPowerAgent as WeightedCapFIFOAgent
 from agents.new_cap_heuristic_agent import CarbonPartitionAgent as NewCarbonPartitionAgent
 from agents.new_cap_decima_agent import CarbonActorAgent as NewCarbonActorAgent
@@ -57,11 +58,12 @@ power_models = [
 # with the legacy dynamic-only model.
 power_aware_schemes = {
     'cap_power', 'weighted_cap_fifo', 'dynamic_b_cap_fifo',
-    'lookahead_cap_fifo', 'backfill_cap_fifo'
+    'lookahead_cap_fifo', 'backfill_cap_fifo', 'efficiency_cap_fifo'
 }
 carbon_aware_schemes = {
     'cap_fifo', 'cap_partition', 'cap_power',
     'dynamic_b_cap_fifo', 'lookahead_cap_fifo', 'backfill_cap_fifo',
+    'efficiency_cap_fifo',
     'new_cap_fifo', 'weighted_cap_fifo', 'new_cap_partition',
     'new_cap_decima', 'new_pcaps',
     'pcaps', 'cap_decima', 'green_hadoop'
@@ -157,6 +159,10 @@ def create_agent(scheme, power_model, experiment_seed):
             pidle=pidle, pdyn=pdyn)
     if scheme == 'backfill_cap_fifo':
         return BackfillCapFIFOAgent(
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
+            pidle=pidle, pdyn=pdyn)
+    if scheme == 'efficiency_cap_fifo':
+        return EfficiencyCapFIFOAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
             pidle=pidle, pdyn=pdyn)
     if scheme in ('new_cap_partition'):
