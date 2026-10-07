@@ -16,6 +16,7 @@ from agents.carbon_aware_fifo_agent import CarbonAgent
 from agents.carbon_power_agent import CarbonPowerAgent
 from agents.green_hadoop_agent import GreenHadoopThetaAgent
 from agents.new_cap_fifo_agent import CarbonAgent as NewCarbonAgent
+from agents.weighted_cap_fifo_agent import CarbonPowerAgent as WeightedCapFIFOAgent
 from agents.new_cap_heuristic_agent import CarbonPartitionAgent as NewCarbonPartitionAgent
 from agents.new_cap_decima_agent import CarbonActorAgent as NewCarbonActorAgent
 from agents.new_pcaps_actor_agent import PCAPSAgent as NewPCAPSAgent
@@ -48,9 +49,12 @@ power_models = [
 # Only cap_power uses the power model while making scheduling decisions.
 # Other schedulers, including the updated legacy agents, are evaluated once
 # with the legacy dynamic-only model.
-power_aware_schemes = {'cap_power'}
+power_aware_schemes = {
+    'cap_power', 'weighted_cap_fifo'
+}
 carbon_aware_schemes = {
-    'cap_fifo', 'cap_partition', 'cap_power', 'new_cap_fifo',
+    'cap_fifo', 'cap_partition', 'cap_power',
+    'new_cap_fifo', 'weighted_cap_fifo', 'new_cap_partition',
     'new_cap_decima', 'new_pcaps',
     'pcaps', 'cap_decima', 'green_hadoop'
 }
@@ -70,8 +74,9 @@ df = pd.read_csv(args.carbon_trace)
 c = df["carbon_intensity_avg"]
 r = df['power_production_percent_renewable_avg']
 
-# pick a random start time in the trace
-start_time = np.random.randint(0, len(c) - 100)
+# Pick a reproducible start time so separate rho runs use the same trace.
+trace_rng = np.random.RandomState(args.seed)
+start_time = trace_rng.randint(0, len(c) - 100)
 c = c[start_time:start_time + 100].to_list()
 r = r[start_time:start_time + 100].to_list()
 
@@ -130,6 +135,10 @@ def create_agent(scheme, power_model, experiment_seed):
     if scheme == 'new_cap_fifo':
         return NewCarbonAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
+    if scheme == 'weighted_cap_fifo':
+        return WeightedCapFIFOAgent(
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
+            pidle=pidle, pdyn=pdyn, rho=args.rho)
     if scheme in ('new_cap_partition'):
         return NewCarbonPartitionAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
@@ -288,6 +297,7 @@ for exp in range(args.num_exp):
                     "power_model": model["name"],
                     "pidle": model['pidle'],
                     "pdyn": model['pdyn'],
+                    "rho": args.rho,
                     "dynamic_carbon_usage": total_dynamic_carbon_usage,
                     "idle_carbon_usage": total_idle_carbon_usage,
                     "total_carbon_usage": total_carbon_usage,

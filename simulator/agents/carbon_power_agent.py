@@ -3,7 +3,6 @@
 
 from agents.agent import Agent
 
-
 class CarbonPowerAgent(Agent):
     """Capped, precedence-aware scheduling with power-aware deferral."""
 
