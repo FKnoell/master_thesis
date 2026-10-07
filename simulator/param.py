@@ -3,8 +3,8 @@ import argparse
 parser = argparse.ArgumentParser(description='DAG_ML')
 
 # -- Basic --
-parser.add_argument('--seed', type=int, default=100,
-                    help='random seed (default: 100)')
+parser.add_argument('--seed', type=int, default=None,
+                    help='random seed (default: random)')
 parser.add_argument('--eps', type=float, default=1e-6,
                     help='epsilon (default: 1e-6)')
 parser.add_argument('--num_proc', type=int, default=1,
