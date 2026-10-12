@@ -1,0 +1,176 @@
+instdir: ./instances
+
+instances:
+  - repo: local
+    items:
+      - local
+
+experiments:
+  - name: test-fifo
+    args:
+      - python
+      - simulator/test.py
+      - --num_exp
+      - "1"
+      - --seed
+      - "1"
+      - --canvs_visualization
+      - "0"
+      - --result_folder
+      - "@OUTPUT@"
+      - "@EXTRA_ARGS@"
+      - --test_schemes
+      - spark_fifo
+    stdout: out
+
+  - name: base
+    args:
+      - python
+      - simulator/test.py
+      - --num_exp
+      - "1"
+      - --seed
+      - "1"
+      - --canvs_visualization
+      - "0"
+      - --result_folder
+      - "@OUTPUT@"
+      - "@EXTRA_ARGS@"
+      - --test_schemes
+      - spark_fifo
+      - cap_fifo
+      - new_cap_fifo
+      - pcaps
+    stdout: out
+
+  - name: new
+    args:
+      - python
+      - simulator/test.py
+      - --num_exp
+      - "1"
+      - --seed
+      - "1"
+      - --canvs_visualization
+      - "0"
+      - --result_folder
+      - "@OUTPUT@"
+      - "@EXTRA_ARGS@"
+      - --test_schemes
+      - spark_fifo
+      - cap_fifo
+      - new_cap_fifo
+      - cap_partition
+      - new_cap_partition
+      - cap_decima
+      - new_cap_decima
+      - pcaps
+      - new_pcaps
+    stdout: out
+
+  - name: capfifo
+    args:
+      - python
+      - simulator/test.py
+      - --num_exp
+      - "1"
+      - --seed
+      - "1"
+      - --canvs_visualization
+      - "0"
+      - --result_folder
+      - "@OUTPUT@"
+      - "@EXTRA_ARGS@"
+      - --test_schemes
+      - spark_fifo
+      - cap_fifo
+      - new_cap_fifo
+      - cap_power
+      - backfill_cap_fifo
+      - dynamic_b_cap_fifo
+      - efficiency_cap_fifo
+      - lookahead_cap_fifo
+      - weighted_cap_fifo
+      - pcaps
+    stdout: out
+
+  - name: all
+    args:
+      - python
+      - simulator/test.py
+      - --num_exp
+      - "1"
+      - --seed
+      - "1"
+      - --canvs_visualization
+      - "0"
+      - --result_folder
+      - "@OUTPUT@"
+      - "@EXTRA_ARGS@"
+      - --test_schemes
+      - spark_fifo
+      - dynamic_partition
+      - decima
+      - green_hadoop
+      - cap_fifo
+      - new_cap_fifo
+      - cap_partition
+      - new_cap_partition
+      - cap_decima
+      - new_cap_decima
+      - cap_power
+      - backfill_cap_fifo
+      - dynamic_b_cap_fifo
+      - efficiency_cap_fifo
+      - lookahead_cap_fifo
+      - weighted_cap_fifo
+      - pcaps
+      - new_pcaps
+    stdout: out
+
+variants:
+  - axis: exec-cap
+    items:
+      - name: cap100
+        extra_args:
+          - --exec_cap
+          - "100"
+      - name: cap1000
+        extra_args:
+          - --exec_cap
+          - "1000"
+
+  - axis: init-dags
+    items:
+      - name: init1
+        extra_args:
+          - --num_init_dags
+          - "1"
+      - name: init5
+        extra_args:
+          - --num_init_dags
+          - "5"
+
+  - axis: stream-dags
+    items:
+      - name: stream50
+        extra_args:
+          - --num_stream_dags
+          - "50"
+      - name: stream100
+        extra_args:
+          - --num_stream_dags
+          - "100"
+
+matrix:
+  include:
+    - experiments:
+        - test-fifo
+        - base
+        - new
+        - capfifo
+        - all
+      axes:
+        - exec-cap
+        - init-dags
+        - stream-dags

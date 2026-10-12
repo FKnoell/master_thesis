@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib
-
+import os
 
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -376,7 +376,12 @@ for exp in range(args.num_exp):
 
     # plt.close(fig)
 
+output_file = os.path.join(
+    args.result_folder,
+    "carbon_power_models.csv"
+)
+
 pd.DataFrame(carbon_power_results).to_csv(
-    args.result_folder + "carbon_power_models.csv",
+    output_file,
     index=False
 )
