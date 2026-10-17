@@ -11,6 +11,12 @@ parser.add_argument('--num_proc', type=int, default=1,
                     help='number of processors (default: 1)')
 parser.add_argument('--num_exp', type=int, default=10,
                     help='number of experiments (default: 10)')
+parser.add_argument('--max_progress_points', type=int, default=500,
+                    help='maximum number of progress points per simulation')
+parser.add_argument('--progress_interval', type=int, default=10,
+                    help='simulation steps between progress points')
+parser.add_argument('--max_stalled_steps', type=int, default=100,
+                    help='maximum consecutive steps without simulation-time progress')
 parser.add_argument('--query_type', type=str, default='tpch',
                     help='query type (default: tpch)')
 parser.add_argument('--job_folder', type=str, default='./simulator/spark_env/tpch/',

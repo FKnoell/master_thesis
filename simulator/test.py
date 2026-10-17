@@ -32,6 +32,13 @@ import pandas as pd
 if args.seed is None:
     args.seed = int(np.random.SeedSequence().generate_state(1)[0])
 
+if args.max_progress_points <= 0:
+    raise ValueError('--max_progress_points must be greater than 0')
+if args.progress_interval <= 0:
+    raise ValueError('--progress_interval must be greater than 0')
+if args.max_stalled_steps <= 0:
+    raise ValueError('--max_stalled_steps must be greater than 0')
+
 # Always-on power models.
 # P_IDLE is charged for every provisioned executor for the full schedule.
 # P_DYN is charged for task execution time.
@@ -196,16 +203,23 @@ def create_agent(scheme, power_model, experiment_seed):
 
 
 def run_scheme(env, scheme, agent):
-    """Run one scheduler against one fresh environment."""
+    """Run one scheduler and report whether the simulation completed."""
     obs = env.observe()
     total_reward = 0
     done = False
     step = 0
+    progress_points = 0
+    stalled_steps = 0
+    stop_reason = None
+    previous_time = env.wall_time.curr_time
 
     while not done:
-        if step % 10 == 0:
+        if step % args.progress_interval == 0:
             print('.', end='', flush=True)
-        step += 1
+            progress_points += 1
+            if progress_points >= args.max_progress_points:
+                stop_reason = 'max_progress_points'
+                break
 
         if scheme in carbon_aware_schemes:
             node, use_exec, carbon_aware = agent.get_action(obs)
@@ -216,8 +230,29 @@ def run_scheme(env, scheme, agent):
             obs, reward, done = env.step(node, use_exec)
 
         total_reward += reward
+        step += 1
 
-    return total_reward
+        current_time = env.wall_time.curr_time
+        if current_time == previous_time:
+            stalled_steps += 1
+        else:
+            stalled_steps = 0
+        previous_time = current_time
+
+        if not done and stalled_steps >= args.max_stalled_steps:
+            stop_reason = 'max_stalled_steps'
+            break
+
+    print('', flush=True)
+    completed = done and stop_reason is None
+    if not completed:
+        print(
+            f'INVALID: {scheme} stopped after {step} steps '
+            f'({progress_points} progress points), reason={stop_reason}',
+            flush=True,
+        )
+
+    return total_reward, completed, stop_reason
 
 
 def calculate_carbon_usage(env, power_model):
@@ -292,30 +327,49 @@ for exp in range(args.num_exp):
             env = Environment(carbon_schedule=carbon_dict)
             env.seed(experiment_seed)
             env.reset()
-            agent = create_agent(scheme, schedule_model, experiment_seed)
-            total_reward = run_scheme(env, scheme, agent)
-            all_total_reward[scheme].append(total_reward)
+            try:
+                agent = create_agent(scheme, schedule_model, experiment_seed)
+                total_reward, completed, stop_reason = run_scheme(
+                    env, scheme, agent)
+            except ValueError as error:
+                print(
+                    f'INVALID: {scheme} raised ValueError and was skipped: '
+                    f'{error}',
+                    flush=True,
+                )
+                total_reward = np.nan
+                completed = False
+                stop_reason = 'value_error'
 
-            job_durations = [
-                job_dag.completion_time - job_dag.start_time
-                for job_dag in env.finished_job_dags
-            ]
+            if completed:
+                all_total_reward[scheme].append(total_reward)
+                job_durations = [
+                    job_dag.completion_time - job_dag.start_time
+                    for job_dag in env.finished_job_dags
+                ]
+            else:
+                job_durations = []
 
             models_to_evaluate = (
                 [schedule_model] if scheme in power_aware_schemes
                 else power_models
             )
             for model in models_to_evaluate:
-                total_carbon_usage, total_dynamic_carbon_usage, \
-                    total_idle_carbon_usage = calculate_carbon_usage(
-                        env, model)
+                if completed:
+                    total_carbon_usage, total_dynamic_carbon_usage, \
+                        total_idle_carbon_usage = calculate_carbon_usage(
+                            env, model)
 
-                scheme_results_by_model[model["name"]].append((
-                    scheme,
-                    env.wall_time.curr_time,
-                    total_carbon_usage,
-                    np.mean(job_durations)
-                ))
+                    scheme_results_by_model[model["name"]].append((
+                        scheme,
+                        env.wall_time.curr_time,
+                        total_carbon_usage,
+                        np.mean(job_durations)
+                    ))
+                else:
+                    total_carbon_usage = np.nan
+                    total_dynamic_carbon_usage = np.nan
+                    total_idle_carbon_usage = np.nan
 
                 carbon_power_results.append({
                     "experiment": exp + 1,
@@ -327,6 +381,7 @@ for exp in range(args.num_exp):
                     "dynamic_carbon_usage": total_dynamic_carbon_usage,
                     "idle_carbon_usage": total_idle_carbon_usage,
                     "total_carbon_usage": total_carbon_usage,
+                    "status": "completed" if completed else "invalid",
                 })
 
                 print("")
@@ -335,7 +390,8 @@ for exp in range(args.num_exp):
                     f"scheme {scheme}, experiment {exp + 1},: "
                     f"dynamic={total_dynamic_carbon_usage:.2f}, "
                     f"idle={total_idle_carbon_usage:.2f}, "
-                    f"total={total_carbon_usage:.2f}"
+                    f"total={total_carbon_usage:.2f}, "
+                    f"status={'completed' if completed else 'invalid'}"
                 )
         
     '''
