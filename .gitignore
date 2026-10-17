@@ -172,3 +172,13 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Simexpal output files
+aux/
+
+output/**
+!output/**/
+!output/**/*.csv
+
+status.cache
+validation.cache
