@@ -21,47 +21,6 @@ experiments:
       - spark_fifo
     stdout: out
 
-  - name: base
-    args:
-      - python
-      - simulator/test.py
-      - --num_exp
-      - "10"
-      - --canvs_visualization
-      - "0"
-      - --result_folder
-      - "@OUTPUT_SUBDIR@"
-      - "@EXTRA_ARGS@"
-      - --test_schemes
-      - spark_fifo
-      - cap_fifo
-      - new_cap_fifo
-      - pcaps
-    stdout: out
-
-  - name: new
-    args:
-      - python
-      - simulator/test.py
-      - --num_exp
-      - "100"
-      - --canvs_visualization
-      - "0"
-      - --result_folder
-      - "@OUTPUT_SUBDIR@"
-      - "@EXTRA_ARGS@"
-      - --test_schemes
-      - spark_fifo
-      - cap_fifo
-      - new_cap_fifo
-      - cap_partition
-      - new_cap_partition
-      - cap_decima
-      - new_cap_decima
-      - pcaps
-      - new_pcaps
-    stdout: out
-
   - name: capfifo
     args:
       - python
@@ -83,6 +42,7 @@ experiments:
       - efficiency_cap_fifo
       - lookahead_cap_fifo
       - weighted_cap_fifo
+      - enhanced_cap_fifo
       - pcaps
     stdout: out
 
@@ -114,6 +74,7 @@ experiments:
       - efficiency_cap_fifo
       - lookahead_cap_fifo
       - weighted_cap_fifo
+      - enhanced_cap_fifo
       - pcaps
       - new_pcaps
     stdout: out
@@ -125,10 +86,10 @@ variants:
         extra_args:
           - --exec_cap
           - "100"
-      - name: cap1000
+      - name: cap50
         extra_args:
           - --exec_cap
-          - "1000"
+          - "50"
 
   - axis: init-dags
     items:
