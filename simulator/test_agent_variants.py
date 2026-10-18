@@ -289,8 +289,6 @@ def main():
                             constructor_values, sort_keys=True),
                         'experiment': experiment,
                         'completed': completed,
-                        'stop_reason': stop_reason,
-                        'wall_time': env.wall_time.curr_time,
                         'dynamic_carbon_usage': dynamic,
                         'idle_carbon_usage': idle,
                         'total_carbon_usage': total,
