@@ -7,22 +7,24 @@ class EnhancedCapFIFOAgent(BaseCarbonAgent):
     """FIFO CAP with dynamic B, lookahead, efficiency ties, and backfill."""
 
     def __init__(self, exec_cap, carbon_schedule, pidle=0.0, pdyn=1.0,
-                 horizon_slots=6, arrival_tolerance=60000,
-                 max_backfill_work=120000.0, max_slowdown=1.25,
-                 max_consecutive_waits=3):
+                 horizon_slots=6, arrival_tolerance=180000,
+                 max_backfill_work=120000.0, max_slowdown=1.05):
+        base_B = min(exec_cap, (exec_cap + 9) // 10)
+        max_B = min(exec_cap, (exec_cap * 3 + 4) // 5)
         super().__init__(
             exec_cap=exec_cap,
             carbon_schedule=carbon_schedule,
-            exec_lower_bound=min(20, exec_cap),
+            exec_lower_bound=base_B,
         )
         self.pidle = pidle
         self.pdyn = pdyn
-        self.base_B = min(20, exec_cap)
+        self.max_B = max_B
+        self.base_B = base_B
         self.horizon_slots = max(1, horizon_slots)
         self.arrival_tolerance = max(0, arrival_tolerance)
         self.max_backfill_work = max_backfill_work
         self.max_slowdown = max(1.0, max_slowdown)
-        self.max_consecutive_waits = max_consecutive_waits
+        self.max_consecutive_waits = 11 - (pidle * 10)
         self.consecutive_waits = 0
 
     def _carbon_at(self, timestamp):
@@ -79,10 +81,12 @@ class EnhancedCapFIFOAgent(BaseCarbonAgent):
         work_factor = min(1.0, pending / 1000.0)
         idle_penalty = 1.0 - 0.5 * max(0.0, min(1.0, self.pidle))
         dynamic_bonus = 0.25 * max(0.0, min(1.0, self.pdyn))
+        dynamic_B = int(
+            self.base_B * work_factor * (idle_penalty + dynamic_bonus)
+        )
         self.B = min(
-            max(5, int(self.base_B * work_factor *
-                       (idle_penalty + dynamic_bonus))),
-            self.exec_cap_MAX,
+            self.max_B,
+            max(min(5, self.max_B), dynamic_B),
         )
 
     def _efficiency(self, node, current_time, num_source_exec,
