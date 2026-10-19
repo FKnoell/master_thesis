@@ -46,6 +46,23 @@ experiments:
       - pcaps
     stdout: out
 
+  - name: agent-variants
+    args:
+      - python
+      - simulator/test_agent_variants.py
+      - --agent
+      - all
+      - --variant_num_exp
+      - "100"
+      - --pidle_range
+      - "0.0"
+      - "1.0"
+      - "0.05"
+      - --variant_result_file
+      - "@OUTPUT_SUBDIR@/agent_variants.csv"
+      - "@EXTRA_ARGS@"
+    stdout: out
+
   - name: all
     args:
       - python
@@ -125,3 +142,7 @@ matrix:
         - exec-cap
         - init-dags
         - stream-dags
+
+    - experiments:
+        - agent-variants
+      axes: []
