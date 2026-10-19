@@ -12,8 +12,6 @@ experiments:
       - simulator/test.py
       - --num_exp
       - "1"
-      - --canvs_visualization
-      - "0"
       - --result_folder
       - "@OUTPUT_SUBDIR@"
       - "@EXTRA_ARGS@"
@@ -27,8 +25,6 @@ experiments:
       - simulator/test.py
       - --num_exp
       - "100"
-      - --canvs_visualization
-      - "0"
       - --result_folder
       - "@OUTPUT_SUBDIR@"
       - "@EXTRA_ARGS@"
@@ -69,8 +65,6 @@ experiments:
       - simulator/test.py
       - --num_exp
       - "100"
-      - --canvs_visualization
-      - "0"
       - --result_folder
       - "@OUTPUT_SUBDIR@"
       - "@EXTRA_ARGS@"
@@ -114,10 +108,10 @@ variants:
         extra_args:
           - --num_init_dags
           - "1"
-      - name: init5
+      - name: init3
         extra_args:
           - --num_init_dags
-          - "5"
+          - "3"
 
   - axis: stream-dags
     items:
@@ -129,13 +123,15 @@ variants:
         extra_args:
           - --num_stream_dags
           - "100"
+      - name: stream200
+        extra_args:
+          - --num_stream_dags
+          - "200"
 
 matrix:
   include:
     - experiments:
         - test-fifo
-        - base
-        - new
         - capfifo
         - all
       axes:
