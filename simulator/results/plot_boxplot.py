@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 import pandas as pd
@@ -5,18 +6,29 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 
-RESULTS_DIR = Path(__file__).resolve().parent
-CSV_PATH = RESULTS_DIR / "carbon_power_models.csv"
-OUTPUT_PATH = RESULTS_DIR / "carbon_improvement_by_pidle.png"
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--csv_path",
+    type=Path,
+    required=True,
+    help="Path to carbon_power_models.csv",
+)
+parser.add_argument(
+    "--output_path",
+    type=Path,
+    required=True,
+    help="Path to save the output plot",
+)
+args = parser.parse_args()
 
 SELECTED_PIDLE = [0.0, 0.15, 0.3, 0.4, 0.5, 0.6, 0.7, 0.85, 1.0]
 
 
-if not CSV_PATH.exists():
-    raise FileNotFoundError(f"Could not find:\n{CSV_PATH}")
+if not args.csv_path.exists():
+    raise FileNotFoundError(f"Could not find:\n{args.csv_path}")
 
 
-df = pd.read_csv(CSV_PATH)
+df = pd.read_csv(args.csv_path)
 df.columns = df.columns.str.strip()
 
 required_columns = {
@@ -38,6 +50,18 @@ if missing:
 df["scheme"] = df["scheme"].astype(str).str.strip().str.lower()
 df["power_model"] = df["power_model"].astype(str).str.strip()
 df["experiment"] = pd.to_numeric(df["experiment"], errors="coerce")
+if "status" in df.columns:
+    invalid_experiments = df.loc[
+        df["status"].astype(str).str.strip().str.lower() == "invalid",
+        "experiment",
+    ].dropna().unique()
+    if len(invalid_experiments):
+        df = df[~df["experiment"].isin(invalid_experiments)].copy()
+        print(
+            "Ignoring experiments with invalid status: "
+            f"{', '.join(map(str, invalid_experiments))}"
+        )
+
 df["pidle"] = pd.to_numeric(df["pidle"], errors="coerce")
 df["total_carbon_usage"] = pd.to_numeric(
     df["total_carbon_usage"], errors="coerce"
@@ -199,6 +223,7 @@ fig.suptitle(
 )
 
 fig.tight_layout()
-fig.savefig(OUTPUT_PATH, dpi=300, bbox_inches="tight")
+args.output_path.parent.mkdir(parents=True, exist_ok=True)
+fig.savefig(args.output_path, dpi=300, bbox_inches="tight")
 
-print(f"\nSaved plot to:\n{OUTPUT_PATH}")
+print(f"\nSaved plot to:\n{args.output_path}")

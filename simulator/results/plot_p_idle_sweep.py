@@ -19,6 +19,19 @@ def main():
 
     # Load results
     df = pd.read_csv(args.csv_path)
+    
+    df.columns = df.columns.str.strip()
+    if "status" in df.columns:
+        invalid_experiments = df.loc[
+            df["status"].astype(str).str.strip().str.lower() == "invalid",
+            "experiment",
+        ].dropna().unique()
+        if len(invalid_experiments):
+            df = df[~df["experiment"].isin(invalid_experiments)].copy()
+            print(
+                "Ignoring experiments with invalid status: "
+                f"{', '.join(map(str, invalid_experiments))}"
+            )
 
     # Aggregate over experiments (mean per scheme + power_model)
     agg = df.groupby(["scheme", "power_model", "pidle", "pdyn"]).agg({
