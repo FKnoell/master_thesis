@@ -59,6 +59,40 @@ experiments:
       - "@EXTRA_ARGS@"
     stdout: out
 
+  - name: agent-variants-enhanced
+    args:
+      - python
+      - simulator/test_agent_variants.py
+      - --agent
+      - enhanced
+      - --variant_num_exp
+      - "100"
+      - --pidle_range
+      - "0.0"
+      - "1.0"
+      - "0.05"
+      - --variant_result_file
+      - "@OUTPUT_SUBDIR@/agent_variants.csv"
+      - "@EXTRA_ARGS@"
+    stdout: out
+
+  - name: enhanced-capfifo
+    args:
+      - python
+      - simulator/test_agent_variants.py
+      - --agent
+      - enhanced_cap_fifo
+      - --variant_num_exp
+      - "100"
+      - --pidle_range
+      - "0.0"
+      - "1.0"
+      - "0.05"
+      - --variant_result_file
+      - "@OUTPUT_SUBDIR@/agent_variants.csv"
+      - "@EXTRA_ARGS@"
+    stdout: out
+
   - name: all
     args:
       - python
@@ -134,6 +168,7 @@ matrix:
         - test-fifo
         - capfifo
         - all
+        - enhanced-capfifo
       axes:
         - exec-cap
         - init-dags
@@ -141,4 +176,5 @@ matrix:
 
     - experiments:
         - agent-variants
+        - agent-variants-enhanced
       axes: []

@@ -21,6 +21,7 @@ from agents.lookahead_cap_fifo_agent import LookaheadCapFIFOAgent
 from agents.backfill_cap_fifo_agent import BackfillCapFIFOAgent
 from agents.efficiency_cap_fifo_agent import EfficiencyCapFIFOAgent
 from agents.enhanced_cap_fifo_agent import EnhancedCapFIFOAgent
+from agents.cap_power_enhanced_fifo_agent import CapPowerEnhancedFIFOAgent
 from agents.weighted_cap_fifo_agent import CarbonPowerAgent as WeightedCapFIFOAgent
 from agents.new_cap_heuristic_agent import CarbonPartitionAgent as NewCarbonPartitionAgent
 from agents.new_cap_decima_agent import CarbonActorAgent as NewCarbonActorAgent
@@ -61,18 +62,16 @@ power_models = [
     for i, pidle in enumerate(pidle_values)
 ]
 
-# Only cap_power uses the power model while making scheduling decisions.
-# Other schedulers, including the updated legacy agents, are evaluated once
-# with the legacy dynamic-only model.
+# Power-aware schedulers are evaluated separately for each power model.
 power_aware_schemes = {
     'cap_power', 'weighted_cap_fifo', 'dynamic_b_cap_fifo',
     'lookahead_cap_fifo', 'backfill_cap_fifo', 'efficiency_cap_fifo',
-    'enhanced_cap_fifo'
+    'enhanced_cap_fifo', 'cap_power_enhanced_fifo'
 }
 carbon_aware_schemes = {
     'cap_fifo', 'cap_partition', 'cap_power',
     'dynamic_b_cap_fifo', 'lookahead_cap_fifo', 'backfill_cap_fifo',
-    'efficiency_cap_fifo', 'enhanced_cap_fifo',
+    'efficiency_cap_fifo', 'enhanced_cap_fifo', 'cap_power_enhanced_fifo',
     'new_cap_fifo', 'weighted_cap_fifo', 'new_cap_partition',
     'new_cap_decima', 'new_pcaps',
     'pcaps', 'cap_decima', 'green_hadoop'
@@ -176,6 +175,10 @@ def create_agent(scheme, power_model, experiment_seed):
             pidle=pidle, pdyn=pdyn)
     if scheme == 'enhanced_cap_fifo':
         return EnhancedCapFIFOAgent(
+            exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
+            pidle=pidle, pdyn=pdyn)
+    if scheme == 'cap_power_enhanced_fifo':
+        return CapPowerEnhancedFIFOAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
             pidle=pidle, pdyn=pdyn)
     if scheme in ('new_cap_partition'):
@@ -387,6 +390,9 @@ for exp in range(args.num_exp):
                     "dynamic_carbon_usage": total_dynamic_carbon_usage,
                     "idle_carbon_usage": total_idle_carbon_usage,
                     "total_carbon_usage": total_carbon_usage,
+                    "total_time_ms": (
+                        env.wall_time.curr_time if completed else np.nan
+                    ),
                     "status": "completed" if completed else "invalid",
                 })
 

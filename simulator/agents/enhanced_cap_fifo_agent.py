@@ -1,5 +1,7 @@
 # enhanced_cap_fifo_agent.py combines the FIFO CAP improvements.
 
+import math
+
 from agents.new_cap_fifo_agent import CarbonAgent as BaseCarbonAgent
 
 
@@ -8,9 +10,12 @@ class EnhancedCapFIFOAgent(BaseCarbonAgent):
 
     def __init__(self, exec_cap, carbon_schedule, pidle=0.0, pdyn=1.0,
                  horizon_slots=6, arrival_tolerance=180000,
-                 max_backfill_work=120000.0, max_slowdown=1.05):
-        base_B = min(exec_cap, (exec_cap + 9) // 10)
-        max_B = min(exec_cap, (exec_cap * 3 + 4) // 5)
+                 max_backfill_work=120000.0, max_slowdown=1.05,
+                 base_B=0.1, max_B=0.6):
+        if not 0 <= base_B <= 1 or not 0 <= max_B <= 1:
+            raise ValueError('base_B and max_B must be fractions from 0 to 1')
+        base_B = min(exec_cap, max(1, math.ceil(exec_cap * base_B)))
+        max_B = min(exec_cap, max(1, math.ceil(exec_cap * max_B)))
         super().__init__(
             exec_cap=exec_cap,
             carbon_schedule=carbon_schedule,

@@ -21,15 +21,20 @@ import sys
 _variant_parser = argparse.ArgumentParser(add_help=False)
 _variant_parser.add_argument(
     '--agent',
+    nargs='+',
     choices=[
         'dynamic_b_cap_fifo',
         'lookahead_cap_fifo',
         'backfill_cap_fifo',
         'efficiency_cap_fifo',
         'weighted_cap_fifo',
+        'enhanced',
+        'enhanced_cap_fifo',
+        'cap_power_enhanced_fifo',
         'all',
     ],
-    default='all',
+    default=['all'],
+    help='Agent(s) to evaluate; "enhanced" selects both enhanced FIFO agents',
 )
 _variant_parser.add_argument(
     '--variant_result_file',
@@ -42,6 +47,14 @@ _variant_parser.add_argument(
     default=None,
     help='Override --num_exp for this sweep',
 )
+_variant_parser.add_argument('--arrival_tolerance', type=int, default=None)
+_variant_parser.add_argument('--max_slowdown', type=float, default=None)
+_variant_parser.add_argument('--base_B', '--base-b', dest='base_B',
+                             type=float, default=None)
+_variant_parser.add_argument('--max_B', '--max-b', dest='max_B',
+                             type=float, default=None)
+_variant_parser.add_argument(
+    '--max_consecutive_waits', type=int, default=None)
 _variant_args, _param_argv = _variant_parser.parse_known_args()
 sys.argv = [sys.argv[0]] + _param_argv
 
@@ -54,6 +67,8 @@ from agents.dynamic_b_cap_fifo_agent import DynamicBCapFIFOAgent
 from agents.lookahead_cap_fifo_agent import LookaheadCapFIFOAgent
 from agents.backfill_cap_fifo_agent import BackfillCapFIFOAgent
 from agents.efficiency_cap_fifo_agent import EfficiencyCapFIFOAgent
+from agents.enhanced_cap_fifo_agent import EnhancedCapFIFOAgent
+from agents.cap_power_enhanced_fifo_agent import CapPowerEnhancedFIFOAgent
 from agents.weighted_cap_fifo_agent import CarbonPowerAgent as WeightedCapFIFOAgent
 
 
@@ -118,6 +133,150 @@ VARIANTS = {
         {'name': 'low_dynamic_weight', 'rho': 0.2,
          'exec_lower_bound': 20, 'max_consecutive_waits': 3},
     ],
+    'enhanced_cap_fifo': [
+        {
+            'name': 'default',
+            'arrival_tolerance': 180000,
+            'max_slowdown': 1.05,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'narrow_arrival_window',
+            'arrival_tolerance': 60000,
+            'max_slowdown': 1.05,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'middle_arrival_window',
+            'arrival_tolerance': 120000,
+            'max_slowdown': 1.05,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'wide_arrival_window',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.05,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'strict_slowdown',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.02,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'lenient_slowdown',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.1,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'lax_slowdown',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.2,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'higher_base_B',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.2,
+            'base_B': 0.2,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'lower_max_B',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.2,
+            'base_B': 0.1,
+            'max_B': 0.5,
+        },
+        {
+            'name': 'higher_max_B',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.2,
+            'base_B': 0.1,
+            'max_B': 0.7,
+        },
+    ],
+    'cap_power_enhanced_fifo': [
+        {
+            'name': 'default',
+            'arrival_tolerance': 180000,
+            'max_slowdown': 1.05,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'narrow_arrival_window',
+            'arrival_tolerance': 60000,
+            'max_slowdown': 1.05,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'middle_arrival_window',
+            'arrival_tolerance': 120000,
+            'max_slowdown': 1.05,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'wide_arrival_window',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.05,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'strict_slowdown',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.02,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'lenient_slowdown',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.1,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'lax_slowdown',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.2,
+            'base_B': 0.1,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'higher_base_B',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.2,
+            'base_B': 0.2,
+            'max_B': 0.6,
+        },
+        {
+            'name': 'lower_max_B',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.2,
+            'base_B': 0.1,
+            'max_B': 0.5,
+        },
+        {
+            'name': 'higher_max_B',
+            'arrival_tolerance': 240000,
+            'max_slowdown': 1.2,
+            'base_B': 0.1,
+            'max_B': 0.7,
+        },
+    ],
 }
 
 AGENT_CLASSES = {
@@ -126,6 +285,8 @@ AGENT_CLASSES = {
     'backfill_cap_fifo': BackfillCapFIFOAgent,
     'efficiency_cap_fifo': EfficiencyCapFIFOAgent,
     'weighted_cap_fifo': WeightedCapFIFOAgent,
+    'enhanced_cap_fifo': EnhancedCapFIFOAgent,
+    'cap_power_enhanced_fifo': CapPowerEnhancedFIFOAgent,
 }
 
 
@@ -227,8 +388,35 @@ def main():
 
     carbon_schedule = load_carbon_schedule()
     power_models = create_power_models()
-    agents = list(AGENT_CLASSES) if _variant_args.agent == 'all' \
-        else [_variant_args.agent]
+    if 'all' in _variant_args.agent and len(_variant_args.agent) > 1:
+        _variant_parser.error("'all' cannot be combined with individual agents")
+    if _variant_args.agent == ['all']:
+        agents = list(AGENT_CLASSES)
+    else:
+        agents = []
+        for selected_agent in _variant_args.agent:
+            if selected_agent == 'enhanced':
+                agents.extend([
+                    'enhanced_cap_fifo',
+                    'cap_power_enhanced_fifo',
+                ])
+            else:
+                agents.append(selected_agent)
+    if _variant_args.max_consecutive_waits is not None \
+            and any(scheme in agents for scheme in (
+                'enhanced_cap_fifo', 'cap_power_enhanced_fifo')):
+        _variant_parser.error(
+            '--max_consecutive_waits is fixed for enhanced CAP agents')
+    enhanced_overrides = {
+        key: value
+        for key, value in vars(_variant_args).items()
+        if key in {
+            'arrival_tolerance',
+            'max_slowdown',
+            'base_B',
+            'max_B',
+        } and value is not None
+    }
     num_exp = (_variant_args.variant_num_exp
                if _variant_args.variant_num_exp is not None else args.num_exp)
     if num_exp <= 0:
@@ -245,6 +433,8 @@ def main():
             variant_values = {
                 key: value for key, value in variant.items() if key != 'name'
             }
+            if scheme in ('enhanced_cap_fifo', 'cap_power_enhanced_fifo'):
+                variant_values.update(enhanced_overrides)
             for power_model in power_models:
                 for experiment, experiment_seed in enumerate(
                         experiment_seeds, 1):
@@ -292,6 +482,7 @@ def main():
                         'dynamic_carbon_usage': dynamic,
                         'idle_carbon_usage': idle,
                         'total_carbon_usage': total,
+                        'total_time_ms': env.wall_time.curr_time,
                     })
                     print(
                         f'{scheme}/{variant["name"]}/'
