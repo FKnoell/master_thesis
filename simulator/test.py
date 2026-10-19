@@ -381,6 +381,9 @@ for exp in range(args.num_exp):
                     "dynamic_carbon_usage": total_dynamic_carbon_usage,
                     "idle_carbon_usage": total_idle_carbon_usage,
                     "total_carbon_usage": total_carbon_usage,
+                    "total_time_ms": (
+                        env.wall_time.curr_time if completed else np.nan
+                    ),
                     "status": "completed" if completed else "invalid",
                 })
 
