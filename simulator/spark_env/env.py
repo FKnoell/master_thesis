@@ -18,10 +18,7 @@ from spark_env.node import Node
 
 
 class Environment(object):
-    def __init__(self, carbon_schedule=None, pidle=0.0, pdyn=1.0):
-
-        self.pidle = pidle
-        self.pdyn = pdyn
+    def __init__(self, carbon_schedule = None):
 
         # isolated random number generator
         self.np_random = np.random.RandomState()
@@ -68,13 +65,10 @@ class Environment(object):
         self.num_active_jobs = 1
 
     def get_carbon_intensity(self, current_time):
-        # round the current time to the nearest (previous) time in the keys
-        keys = [key for key in self.carbon_schedule.keys() if key < current_time]
-        if len(keys) > 0:
-            current_CI_time = max(keys)
-            return self.carbon_schedule[current_CI_time]
-        # else just return the first value
-        return self.carbon_schedule[list(self.carbon_schedule.keys())[0]]
+        default_carbon_value = self.carbon_schedule[
+            min(self.carbon_schedule)]
+        bucket_start = current_time - (current_time % 60000)
+        return self.carbon_schedule.get(bucket_start, default_carbon_value)
 
 
     # def compute_carbon_usage(self, start_time, end_time):
@@ -107,26 +101,56 @@ class Environment(object):
     def compute_carbon_usage(self, start_time, end_time):
         return 0.0 # making this a stub to speed things up
 
-    def compute_power_usage(self, start_time, end_time):
-        duration = max(0.0, end_time - start_time)
-        dynamic_duration = 0.0
+    def compute_carbon_emissions(self, start_time, end_time):
+        if end_time <= start_time:
+            return 0.0
+
+        default_carbon_value = self.carbon_schedule[
+            min(self.carbon_schedule)]
+        schedule_end = int(end_time)
+        dynamic_emissions = 0.0
+        idle_emissions = 0.0
 
         job_dags = list(self.job_dags) + list(self.finished_job_dags)
-        seen_jobs = set()
-        for job_dag in job_dags:
-            if id(job_dag) in seen_jobs:
+        unique_jobs = {id(job_dag): job_dag for job_dag in job_dags}
+        for job_dag in unique_jobs.values():
+            if job_dag.name == 'dummy':
                 continue
-            seen_jobs.add(id(job_dag))
             for node in job_dag.nodes:
                 for task in node.tasks:
-                    if np.isnan(task.start_time):
+                    if np.isnan(task.start_time) or np.isnan(task.finish_time):
                         continue
                     overlap_start = max(start_time, task.start_time)
                     overlap_end = min(end_time, task.finish_time)
-                    dynamic_duration += max(0.0, overlap_end - overlap_start)
+                    if overlap_end <= overlap_start:
+                        continue
 
-        return self.pidle * len(self.executors) * duration + \
-            self.pdyn * dynamic_duration
+                    first_bucket = int(overlap_start) // 60000 * 60000
+                    last_bucket = int(overlap_end) // 60000 * 60000
+                    for bucket in range(
+                            first_bucket, last_bucket + 1, 60000):
+                        carbon_value = self.carbon_schedule.get(
+                            bucket, default_carbon_value)
+                        bucket_start = max(overlap_start, bucket)
+                        bucket_end = min(overlap_end, bucket + 60000)
+                        dynamic_emissions += (
+                            max(0.0, bucket_end - bucket_start)
+                            * self.pdyn * carbon_value
+                        )
+
+        first_bucket = int(start_time) // 60000 * 60000
+        last_bucket = (schedule_end - 1) // 60000 * 60000
+        for bucket in range(first_bucket, last_bucket + 1, 60000):
+            carbon_value = self.carbon_schedule.get(
+                bucket, default_carbon_value)
+            bucket_start = max(start_time, bucket)
+            bucket_end = min(end_time, bucket + 60000)
+            idle_emissions += (
+                max(0.0, bucket_end - bucket_start)
+                * len(self.executors) * self.pidle * carbon_value
+            )
+
+        return dynamic_emissions + idle_emissions
 
 
     def add_job(self, job_dag):
@@ -370,10 +394,12 @@ class Environment(object):
 
         if next_node is None and carbon_aware:
             # Schedule a dummy node to wait for a lower carbon intensity period
-            duration = min(self.time_until_next_carbon_reading(), self.time_until_next_scheduling_decision())
+            next_carbon_reading = self.time_until_next_carbon_reading()
+            next_scheduling_decision = self.time_until_next_scheduling_decision()
+            duration = min(next_carbon_reading, next_scheduling_decision)
             # duration = self.time_until_next_carbon_reading()
-            if duration == float('inf'):
-                duration = 0
+            if duration <= 0 or duration == float('inf'):
+                duration = max(args.moving_delay, 1)
 
             next_node = self.create_dummy_node(duration, limit)
             dummy_job_dag = next_node.job_dag
@@ -506,10 +532,12 @@ class Environment(object):
 
         # Compute reward
         reward_start_time = self.reward_calculator.prev_time
-        reward = self.reward_calculator.get_reward(
+        time_reward = self.reward_calculator.get_reward(
             self.job_dags, self.wall_time.curr_time)
-        reward -= self.compute_power_usage(
-            reward_start_time, self.wall_time.curr_time) / args.reward_scale
+        carbon_emissions = self.compute_carbon_emissions(
+            reward_start_time, self.wall_time.curr_time)
+        reward = -carbon_emissions / args.carbon_reward_scale + \
+            args.time_reward_weight * time_reward
         if carbon_aware:
             reward = 0
 

@@ -21,14 +21,20 @@ parser.add_argument('--model_folder', type=str, default='./simulator/models/',
                     help='Model folder path (default: ./simulator/models)')
 parser.add_argument('--carbon_trace', type=str, default='./simulator/sample-carbon-trace.csv',
                     help='Carbon trace path (default: ./simulator/sample-carbon-trace.csv)')
+parser.add_argument('--max_progress_points', type=int, default=500,
+                    help='maximum number of progress points per simulation')
+parser.add_argument('--progress_interval', type=int, default=10,
+                    help='simulation steps between progress points')
+parser.add_argument('--max_stalled_steps', type=int, default=100,
+                    help='maximum consecutive steps without simulation-time progress')
 
-parser.add_argument('--pidle', type=float, default=None,
-                    help='fixed idle power; omit to sample from pidle_range')
-parser.add_argument('--pdyn', type=float, default=None,
-                    help='fixed dynamic power; omit to use 1 - pidle')
-parser.add_argument('--pidle_range', type=float, default=[0.0, 1.0], nargs=2,
-                    metavar=('MIN', 'MAX'),
-                    help='range for per-rollout pidle sampling (default: 0.0 1.0)')
+parser.add_argument('--pidle_range', type=float, default=[0.0, 1.0, 0.05],
+                    nargs=3, metavar=('START', 'STOP', 'STEP'),
+                    help='P_IDLE sweep range: start, stop, and step (default: 0.0 1.0 0.05)')
+parser.add_argument('--carbon_reward_scale', type=float, default=100000000000.0,
+                    help='scale for carbon-emission reward')
+parser.add_argument('--time_reward_weight', type=float, default=0.01,
+                    help='small completion-time guard in carbon reward')
 
 # -- Environment --
 parser.add_argument('--exec_cap', type=int, default=100,
@@ -93,10 +99,10 @@ parser.add_argument('--canvas_base', type=int, default=-10,
                     help='Canvas color scale bottom (default: -10)')
 
 # -- Learning --
-parser.add_argument('--node_input_dim', type=int, default=7,
-                    help='node input dimensions to graph embedding (default: 7)')
-parser.add_argument('--job_input_dim', type=int, default=5,
-                    help='job input dimensions to graph embedding (default: 5)')
+parser.add_argument('--node_input_dim', type=int, default=8,
+                    help='node input dimensions to graph embedding (default: 8)')
+parser.add_argument('--job_input_dim', type=int, default=6,
+                    help='job input dimensions to graph embedding (default: 6)')
 parser.add_argument('--hid_dims', type=int, default=[16, 8], nargs='+',
                     help='hidden dimensions throughout graph embedding (default: [16, 8])')
 parser.add_argument('--output_dim', type=int, default=8,
@@ -139,6 +145,8 @@ parser.add_argument('--num_agents', type=int, default=16,
                     help='Number of parallel agents (default: 16)')
 parser.add_argument('--num_ep', type=int, default=10000000,
                     help='Number of training epochs (default: 10000000)')
+parser.add_argument('--start_ep', type=int, default=0,
+                    help='First training epoch (default: 0)')
 parser.add_argument('--learn_obj', type=str, default='mean',
                     help='Learning objective (default: mean)')
 parser.add_argument('--saved_model', type=str, default=None,

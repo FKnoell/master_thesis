@@ -35,9 +35,10 @@ class ActorAgent(Agent):
     def __init__(self, sess, node_input_dim, job_input_dim, hid_dims, output_dim,
                  max_depth, executor_levels, eps=1e-6, act_fn=leaky_relu,
                  optimizer=None, scope='actor_agent',
-                 pidle=0.0, pdyn=1.0):
+                 pidle=0.0, pdyn=1.0, carbon_schedule=None):
 
-        Agent.__init__(self, pidle=pidle, pdyn=pdyn)
+        Agent.__init__(self, pidle=pidle, pdyn=pdyn,
+                       carbon_schedule=carbon_schedule)
 
         self.sess = sess
         self.node_input_dim = node_input_dim
@@ -358,7 +359,7 @@ class ActorAgent(Agent):
         """
         job_dags, source_job, num_source_exec, \
         frontier_nodes, executor_limits, \
-        exec_commit, moving_executors, action_map, _ = obs
+        exec_commit, moving_executors, action_map, current_time = obs
 
         # compute total number of nodes
         total_num_nodes = int(sum(job_dag.num_nodes for job_dag in job_dags))
@@ -403,6 +404,8 @@ class ActorAgent(Agent):
             job_inputs[job_idx, 2] = num_source_exec / 20.0
             job_inputs[job_idx, 3] = self.pidle
             job_inputs[job_idx, 4] = self.pdyn
+            job_inputs[job_idx, 5] = \
+                self.carbon_intensity_at(current_time) / 1000.0
 
             job_idx += 1
 
@@ -425,6 +428,8 @@ class ActorAgent(Agent):
                     (node.num_tasks - node.next_task_idx) / 200.0
                 node_inputs[node_idx, 5] = self.pidle
                 node_inputs[node_idx, 6] = self.pdyn
+                node_inputs[node_idx, 7] = \
+                    self.carbon_intensity_at(current_time) / 1000.0
 
                 node_idx += 1
 
