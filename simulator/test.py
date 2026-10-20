@@ -92,20 +92,11 @@ df = pd.read_csv(args.carbon_trace)
 c = df["carbon_intensity_avg"]
 r = df['power_production_percent_renewable_avg']
 
-# Pick a reproducible start time so separate rho runs use the same trace.
+# Pick a reproducible start time so separate runs use the same trace.
 trace_rng = np.random.RandomState(args.seed)
 start_time = trace_rng.randint(0, len(c) - 100)
 c = c[start_time:start_time + 100].to_list()
 r = r[start_time:start_time + 100].to_list()
-
-# # Select a specific start index for the trace to ensure reproducibility
-# TRACE_START = 500
-# 
-# if TRACE_START < 0 or TRACE_START + 100 > len(c):
-#     raise ValueError("TRACE_START must select 100 valid samples")
-# 
-# c = c[TRACE_START:TRACE_START + 100].to_list()
-# r = r[TRACE_START:TRACE_START + 100].to_list()
 
 carbon_schedule = [(60000 * i, c[i]) for i in range(len(c))]
 
@@ -386,7 +377,6 @@ for exp in range(args.num_exp):
                     "power_model": model["name"],
                     "pidle": model['pidle'],
                     "pdyn": model['pdyn'],
-                    "rho": args.rho,
                     "dynamic_carbon_usage": total_dynamic_carbon_usage,
                     "idle_carbon_usage": total_idle_carbon_usage,
                     "total_carbon_usage": total_carbon_usage,
@@ -400,10 +390,7 @@ for exp in range(args.num_exp):
                 print(
                     f"Carbon usage — model {model['name']}, "
                     f"scheme {scheme}, experiment {exp + 1},: "
-                    f"dynamic={total_dynamic_carbon_usage:.2f}, "
-                    f"idle={total_idle_carbon_usage:.2f}, "
                     f"total={total_carbon_usage:.2f}, "
-                    f"status={'completed' if completed else 'invalid'}"
                 )
         
     '''
