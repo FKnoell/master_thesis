@@ -145,8 +145,8 @@ parser.add_argument('--num_ep', type=int, default=10000000,
                     help='Number of training epochs (default: 10000000)')
 parser.add_argument('--learn_obj', type=str, default='mean',
                     help='Learning objective (default: mean)')
-parser.add_argument('--saved_model', type=str, default='./simulator/models/stream_200_job_diff_reward_reset_5e-7_5e-8/model_ep_10000',
-                    help='Path to the saved tf model (default: ./simulator/models/stream_200_job_diff_reward_reset_5e-7_5e-8/model_ep_10000)')
+parser.add_argument('--saved_model', type=str, default=None,
+                    help='Path to the saved tf model (old: ./simulator/models/stream_200_job_diff_reward_reset_5e-7_5e-8/model_ep_10000)')
 parser.add_argument('--check_interval', type=float, default=0.01,
                     help='interval for master to check gradient report (default: 10ms)')
 parser.add_argument('--model_save_interval', type=int, default=1000,

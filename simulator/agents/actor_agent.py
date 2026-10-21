@@ -36,7 +36,7 @@ class ActorAgent(Agent):
     def __init__(self, sess, node_input_dim, job_input_dim, hid_dims, output_dim,
                  max_depth, executor_levels, eps=1e-6, act_fn=leaky_relu,
                  optimizer=tf.compat.v1.train.AdamOptimizer, scope='actor_agent',
-                 pidle=0.0, pdyn=1.0):
+                 pidle=0.0, pdyn=1.0, carbon_schedule=None):
 
         Agent.__init__(self, pidle=pidle, pdyn=pdyn)
 
@@ -51,6 +51,7 @@ class ActorAgent(Agent):
         self.act_fn = act_fn
         self.optimizer = tf.compat.v1.train.AdamOptimizer if optimizer is None else optimizer
         self.scope = scope
+        self.carbon_schedule = carbon_schedule if carbon_schedule is not None else {0: 0.0}
 
         # for computing and storing message passing path
         self.postman = Postman()

@@ -1,8 +1,19 @@
+import os
+import warnings
+
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "3")
+
+warnings.filterwarnings(
+    "ignore",
+    message="`layer.apply` is deprecated",
+    category=UserWarning,
+)
+
 import numpy as np
 import tensorflow as tf
 import matplotlib
-import os
-
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from spark_env.env import Environment
@@ -10,6 +21,7 @@ from agents.spark_agent import SparkAgent
 from agents.heuristic_agent import DynamicPartitionAgent
 from agents.carbon_aware_heuristic_agent import CarbonPartitionAgent
 from agents.actor_agent import ActorAgent
+from agents.power_decima_agent import PowerDecimaAgent
 from agents.carbon_aware_actor_agent import CarbonActorAgent
 from agents.pcaps_actor_agent import PCAPSAgent
 from agents.carbon_aware_fifo_agent import CarbonAgent
@@ -40,6 +52,7 @@ if pidle_step <= 0:
 if pidle_start > pidle_stop:
     raise ValueError('--pidle_range START must not be greater than STOP')
 
+
 pidle_values = np.arange(
     pidle_start, pidle_stop + (pidle_step / 2), pidle_step)
 pidle_values = [round(float(value), 10) for value in pidle_values
@@ -52,7 +65,7 @@ power_models = [
 
 # Power-aware schedulers are evaluated separately for each power model.
 power_aware_schemes = {
-    # 'decima', 'pcaps', 'cap_decima',
+    'power_decima',
 }
 carbon_aware_schemes = {
     'cap_fifo', 'cap_partition', 'pcaps', 'cap_decima', 'green_hadoop'
@@ -104,6 +117,16 @@ def create_agent(scheme, power_model, experiment_seed):
             sess, args.node_input_dim, args.job_input_dim,
             args.hid_dims, args.output_dim, args.max_depth,
             range(1, args.exec_cap + 1), carbon_schedule=carbon_dict, pidle=pidle, pdyn=pdyn)
+
+    if scheme == 'power_decima':
+        tf.compat.v1.reset_default_graph()
+        tf.compat.v1.set_random_seed(int(experiment_seed))
+        sess = tf.compat.v1.Session()
+        return PowerDecimaAgent(
+            sess, args.node_input_dim, args.job_input_dim,
+            args.hid_dims, args.output_dim, args.max_depth,
+            range(1, args.exec_cap + 1), pidle=pidle, pdyn=pdyn,
+            carbon_schedule=carbon_dict)
 
     if scheme == 'decima':
         tf.compat.v1.reset_default_graph()
@@ -240,6 +263,7 @@ for exp in range(args.num_exp):
     experiment_seed = int(experiment_seeds[exp])
 
     for scheme in args.test_schemes:
+        print('')
         print('Scheme ' + scheme)
 
         # Power-aware agents need a fresh schedule for every power model.
@@ -252,7 +276,10 @@ for exp in range(args.num_exp):
 
         for schedule_model in schedule_models:
             np.random.seed(experiment_seed)
-            env = Environment(carbon_schedule=carbon_dict)
+            env = Environment(
+                carbon_schedule=carbon_dict,
+                pidle=schedule_model['pidle'],
+                pdyn=schedule_model['pdyn'])
             env.seed(experiment_seed)
             env.reset()
             try:
@@ -314,7 +341,6 @@ for exp in range(args.num_exp):
                     "status": "completed" if completed else "invalid",
                 })
 
-                print("")
                 print(
                     f"Carbon usage — model {model['name']}, "
                     f"scheme {scheme}, experiment {exp + 1},: "

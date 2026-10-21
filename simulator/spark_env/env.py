@@ -18,7 +18,13 @@ from spark_env.node import Node
 
 
 class Environment(object):
-    def __init__(self, carbon_schedule = None):
+    def __init__(self, carbon_schedule=None, pidle=0.0, pdyn=1.0):
+
+        self.pidle = pidle
+        self.pdyn = pdyn
+        self.running_task_count = 0
+        self.carbon_reward_scale = 1e11
+        self.time_reward_weight = 1e-4
 
         # isolated random number generator
         self.np_random = np.random.RandomState()
@@ -107,50 +113,27 @@ class Environment(object):
 
         default_carbon_value = self.carbon_schedule[
             min(self.carbon_schedule)]
-        schedule_end = int(end_time)
-        dynamic_emissions = 0.0
-        idle_emissions = 0.0
-
-        job_dags = list(self.job_dags) + list(self.finished_job_dags)
-        unique_jobs = {id(job_dag): job_dag for job_dag in job_dags}
-        for job_dag in unique_jobs.values():
-            if job_dag.name == 'dummy':
-                continue
-            for node in job_dag.nodes:
-                for task in node.tasks:
-                    if np.isnan(task.start_time) or np.isnan(task.finish_time):
-                        continue
-                    overlap_start = max(start_time, task.start_time)
-                    overlap_end = min(end_time, task.finish_time)
-                    if overlap_end <= overlap_start:
-                        continue
-
-                    first_bucket = int(overlap_start) // 60000 * 60000
-                    last_bucket = int(overlap_end) // 60000 * 60000
-                    for bucket in range(
-                            first_bucket, last_bucket + 1, 60000):
-                        carbon_value = self.carbon_schedule.get(
-                            bucket, default_carbon_value)
-                        bucket_start = max(overlap_start, bucket)
-                        bucket_end = min(overlap_end, bucket + 60000)
-                        dynamic_emissions += (
-                            max(0.0, bucket_end - bucket_start)
-                            * self.pdyn * carbon_value
-                        )
-
-        first_bucket = int(start_time) // 60000 * 60000
-        last_bucket = (schedule_end - 1) // 60000 * 60000
-        for bucket in range(first_bucket, last_bucket + 1, 60000):
+        emissions = 0.0
+        interval_start = start_time
+        while interval_start < end_time:
+            bucket = int(interval_start) // 60000 * 60000
             carbon_value = self.carbon_schedule.get(
                 bucket, default_carbon_value)
-            bucket_start = max(start_time, bucket)
-            bucket_end = min(end_time, bucket + 60000)
-            idle_emissions += (
-                max(0.0, bucket_end - bucket_start)
-                * len(self.executors) * self.pidle * carbon_value
+            interval_end = min(end_time, bucket + 60000)
+            power = self.pidle * len(self.executors) + \
+                self.pdyn * self.running_task_count
+            emissions += (
+                (interval_end - interval_start) * power * carbon_value
             )
+            interval_start = interval_end
 
-        return dynamic_emissions + idle_emissions
+        return emissions
+
+    def schedule_task(self, node, executor):
+        task = node.schedule(executor)
+        if node.job_dag.name != 'dummy':
+            self.running_task_count += 1
+        return task
 
 
     def add_job(self, job_dag):
@@ -162,7 +145,7 @@ class Environment(object):
     def assign_executor(self, executor, frontier_changed):
         if executor.node is not None and not executor.node.no_more_tasks:
             # keep working on the previous node
-            task = executor.node.schedule(executor)
+            task = self.schedule_task(executor.node, executor)
             self.timeline.push(task.finish_time, task)
         else:
             # need to move on to other nodes
@@ -210,7 +193,7 @@ class Environment(object):
             for node in executor.job_dag.frontier_nodes:
                 if not self.saturated(node):
                     # greedily schedule a frontier node
-                    task = node.schedule(executor)
+                    task = self.schedule_task(node, executor)
                     self.timeline.push(task.finish_time, task)
                     backup_scheduled = True
                     break
@@ -370,7 +353,7 @@ class Environment(object):
                     # executor local to the job
                     if node in node.job_dag.frontier_nodes:
                         # node is immediately runnable
-                        task = node.schedule(executor)
+                        task = self.schedule_task(node, executor)
                         self.timeline.push(task.finish_time, task)
                     else:
                         # put executor back in the free pool
@@ -391,6 +374,7 @@ class Environment(object):
         # Initialize variables to track carbon usage intervals
         last_event_time = self.wall_time.curr_time
         last_task_was_dummy = False
+        step_carbon_emissions = 0.0
 
         if next_node is None and carbon_aware:
             # Schedule a dummy node to wait for a lower carbon intensity period
@@ -440,6 +424,9 @@ class Environment(object):
             new_time, obj = self.timeline.pop()
             # Calculate the time difference since the last event
             time_diff = new_time - last_event_time
+            if time_diff > 0:
+                step_carbon_emissions += self.compute_carbon_emissions(
+                    last_event_time, new_time)
             # Update carbon usage only if the last task was not a dummy
             if time_diff > 0:
                 carbon_usage = self.compute_carbon_usage(last_event_time, new_time)
@@ -458,6 +445,8 @@ class Environment(object):
             if isinstance(obj, Task):  # Task completion event
                 finished_task = obj
                 node = finished_task.node
+                if node.job_dag.name != 'dummy':
+                    self.running_task_count -= 1
                 node.num_finished_tasks += 1
 
                 # Check if the task was a dummy task
@@ -513,7 +502,7 @@ class Environment(object):
                     # The node is still schedulable
                     if node in node.job_dag.frontier_nodes:
                         # Node is immediately runnable
-                        task = node.schedule(executor)
+                        task = self.schedule_task(node, executor)
                         self.timeline.push(task.finish_time, task)
                     else:
                         # Free up the executor in this job
@@ -531,7 +520,10 @@ class Environment(object):
                 exit(1)
 
         # Compute reward
-        reward = self.reward_calculator.get_reward(self.job_dags, self.wall_time.curr_time)
+        time_reward = self.reward_calculator.get_reward(
+            self.job_dags, self.wall_time.curr_time)
+        reward = -step_carbon_emissions / self.carbon_reward_scale + \
+            self.time_reward_weight * time_reward
         if carbon_aware:
             reward = 0
 
@@ -561,6 +553,7 @@ class Environment(object):
 
     def reset(self, max_time=np.inf):
         self.num_active_jobs = 1
+        self.running_task_count = 0
         self.total_carbon_usage = 0
         self.last_time = 0
         self.max_time = max_time

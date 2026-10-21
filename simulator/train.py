@@ -1,7 +1,16 @@
 import os
-os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
-os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
-os.environ.setdefault('ABSL_MIN_LOG_LEVEL', '1')
+import warnings
+
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "3")
+
+warnings.filterwarnings(
+    "ignore",
+    message="`layer.apply` is deprecated",
+    category=UserWarning,
+)
+
 import time
 import numpy as np
 import tensorflow as tf
@@ -13,8 +22,25 @@ from spark_env.env import Environment
 from average_reward import *
 from compute_baselines import *
 from compute_gradients import *
-from agents.actor_agent import ActorAgent
+from agents.power_decima_agent import PowerDecimaAgent
 from tf_logger import TFLogger
+
+# small example training script for carbon-aware scheduling agent
+'''
+python -u simulator/train.py `
+  --exec_cap 50 `
+  --num_init_dags 1 `
+  --num_stream_dags 200 `
+  --reset_prob 5e-7 `
+  --reset_prob_min 5e-8 `
+  --reset_prob_decay 4e-10 `
+  --diff_reward_enabled 1 `
+  --num_agents 16 `
+  --num_ep 10 `
+  --model_save_interval 100 `
+  --model_folder ./simulator/models/stream_200_power_conditioned/ `
+  --pidle_range 0 1 0.05
+  '''
 
 
 def invoke_model(actor_agent, obs, exp, printProbs=False):
@@ -136,7 +162,7 @@ def train_agent(agent_id, param_queue, reward_queue, adv_queue, gradient_queue, 
     sess = tf.compat.v1.Session(config=config)
 
     # set up actor agent
-    actor_agent = ActorAgent(
+    actor_agent = PowerDecimaAgent(
         sess, args.node_input_dim, args.job_input_dim,
         args.hid_dims, args.output_dim, args.max_depth,
         range(1, args.exec_cap + 1))
@@ -266,11 +292,13 @@ def train_agent(agent_id, param_queue, reward_queue, adv_queue, gradient_queue, 
 
 
 def main():
+    if args.seed is None:
+        args.seed = int(np.random.SeedSequence().generate_state(1)[0])
     np.random.seed(args.seed)
     tf.compat.v1.set_random_seed(args.seed)
 
-    if args.start_ep < 0 or args.num_ep <= args.start_ep:
-        raise ValueError('--num_ep must be greater than non-negative --start_ep')
+    if args.num_ep <= 0:
+        raise ValueError('--num_ep must be greater than 0')
     pidle_start, pidle_stop, pidle_step = args.pidle_range
     if (not 0.0 <= pidle_start <= pidle_stop <= 1.0 or
             pidle_step <= 0.0):
@@ -282,9 +310,6 @@ def main():
                     if 0.0 <= value <= 1.0]
     if not pidle_values:
         raise ValueError('--pidle_range produces no valid power values')
-    if args.carbon_reward_scale <= 0 or args.time_reward_weight < 0:
-        raise ValueError('--carbon_reward_scale must be positive and '
-                         '--time_reward_weight must be non-negative')
     trace_values = pd.read_csv(args.carbon_trace)['carbon_intensity_avg']
     if len(trace_values) < 100:
         raise ValueError('Carbon trace needs at least 100 hourly values')
@@ -319,7 +344,7 @@ def main():
     sess = tf.compat.v1.Session()
 
     # set up actor agent
-    actor_agent = ActorAgent(
+    actor_agent = PowerDecimaAgent(
         sess, args.node_input_dim, args.job_input_dim,
         args.hid_dims, args.output_dim, args.max_depth,
         range(1, args.exec_cap + 1))
@@ -342,7 +367,7 @@ def main():
     reset_prob = args.reset_prob
 
     # ---- start training process ----
-    for ep in range(args.start_ep, args.num_ep):
+    for ep in range(args.num_ep):
         print('training epoch', ep, flush=True)
         print('worker rollouts:', args.num_agents, 'workers', flush=True)
 
@@ -354,7 +379,7 @@ def main():
 
         # send out parameters to training agents
         for i in range(args.num_agents):
-            rollout_index = (ep - args.start_ep) * args.num_agents + i
+            rollout_index = ep * args.num_agents + i
             pidle = pidle_values[rollout_index % len(pidle_values)]
             pdyn = 1.0 - pidle
             params_queues[i].put([

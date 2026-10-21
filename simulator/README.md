@@ -6,7 +6,7 @@ The Python code in this directory forks the Decima simulator found at [hongzimao
 To evaluate `PCAPS` and `CAP` against all implemented baselines in a simulated cluster with 100 executors and one trial of 50 random TPC-H jobs under the sample carbon trace, run the following command at the root of this repository:
 
 ```bash
-python3 simulator/test.py --num_exp 1 --exec_cap 50 --exec_cap 100 --num_init_dags 1 --num_stream_dags 50 --canvs_visualization 0 --test_schemes spark_fifo dynamic_partition decima green_hadoop cap_fifo cap_partition cap_decima pcaps
+python3 simulator/test.py --num_exp 1 --exec_cap 50 --exec_cap 100 --num_init_dags 1 --num_stream_dags 50 --canvs_visualization 0 --test_schemes spark_fifo dynamic_partition decima green_hadoop cap_fifo cap_partition cap_decima pcaps --saved_model ./simulator/models/stream_200_job_diff_reward_reset_5e-7_5e-8/model_ep_10000
 ```
 
 The simulator code assumes a Python environment with the following packages:
