@@ -18,6 +18,7 @@ os.environ.setdefault('ABSL_MIN_LOG_LEVEL', '1')
 import numpy as np
 import tensorflow as tf
 import tensorflow.compat.v1 as v1
+import tf_slim as slim
 import bisect
 import random
 from param import *
@@ -236,10 +237,10 @@ class PCAPSAgent(Agent):
                 gsn_dag_summ_extend,
                 gsn_global_summ_extend_node], axis=2)
 
-            node_hid_0 = tf.keras.layers.Dense(32, activation=act_fn, name='node_hid_0')(merge_node)
-            node_hid_1 = tf.keras.layers.Dense(16, activation=act_fn, name='node_hid_1')(node_hid_0)
-            node_hid_2 = tf.keras.layers.Dense(8, activation=act_fn, name='node_hid_2')(node_hid_1)
-            node_outputs = tf.keras.layers.Dense(1, activation=None, name='node_outputs')(node_hid_2)
+            node_hid_0 = slim.fully_connected(merge_node, 32, activation_fn=act_fn)
+            node_hid_1 = slim.fully_connected(node_hid_0, 16, activation_fn=act_fn)
+            node_hid_2 = slim.fully_connected(node_hid_1, 8, activation_fn=act_fn)
+            node_outputs = slim.fully_connected(node_hid_2, 1, activation_fn=None)
 
             # reshape the output dimension (batch_size, total_num_nodes)
             node_outputs = tf.reshape(node_outputs, [batch_size, -1])
@@ -262,10 +263,10 @@ class PCAPSAgent(Agent):
             expanded_state = expand_act_on_state(
                 merge_job, [l / 50.0 for l in self.executor_levels])
 
-            job_hid_0 = tf.keras.layers.Dense(32, activation=act_fn, name='job_hid_0')(expanded_state)
-            job_hid_1 = tf.keras.layers.Dense(16, activation=act_fn, name='job_hid_1')(job_hid_0)
-            job_hid_2 = tf.keras.layers.Dense(8, activation=act_fn, name='job_hid_2')(job_hid_1)
-            job_outputs = tf.keras.layers.Dense(1, activation=None, name='job_outputs')(job_hid_2)
+            job_hid_0 = slim.fully_connected(expanded_state, 32, activation_fn=act_fn)
+            job_hid_1 = slim.fully_connected(job_hid_0, 16, activation_fn=act_fn)
+            job_hid_2 = slim.fully_connected(job_hid_1, 8, activation_fn=act_fn)
+            job_outputs = slim.fully_connected(job_hid_2, 1, activation_fn=None)
 
             # reshape the output dimension (batch_size, num_jobs * num_exec_limits)
             job_outputs = tf.reshape(job_outputs, [batch_size, -1])

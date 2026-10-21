@@ -97,10 +97,10 @@ parser.add_argument('--canvas_base', type=int, default=-10,
                     help='Canvas color scale bottom (default: -10)')
 
 # -- Learning --
-parser.add_argument('--node_input_dim', type=int, default=8,
-                    help='node input dimensions to graph embedding (default: 8)')
-parser.add_argument('--job_input_dim', type=int, default=6,
-                    help='job input dimensions to graph embedding (default: 6)')
+parser.add_argument('--node_input_dim', type=int, default=5,
+                    help='node input dimensions to graph embedding (default: 5)')
+parser.add_argument('--job_input_dim', type=int, default=3,
+                    help='job input dimensions to graph embedding (default: 3)')
 parser.add_argument('--hid_dims', type=int, default=[16, 8], nargs='+',
                     help='hidden dimensions throughout graph embedding (default: [16, 8])')
 parser.add_argument('--output_dim', type=int, default=8,
@@ -143,12 +143,10 @@ parser.add_argument('--num_agents', type=int, default=16,
                     help='Number of parallel agents (default: 16)')
 parser.add_argument('--num_ep', type=int, default=10000000,
                     help='Number of training epochs (default: 10000000)')
-parser.add_argument('--start_ep', type=int, default=0,
-                    help='First training epoch (default: 0)')
 parser.add_argument('--learn_obj', type=str, default='mean',
                     help='Learning objective (default: mean)')
-parser.add_argument('--saved_model', type=str, default=None,
-                    help='Path to a compatible saved TensorFlow model (default: start fresh)')
+parser.add_argument('--saved_model', type=str, default='./simulator/models/stream_200_job_diff_reward_reset_5e-7_5e-8/model_ep_10000',
+                    help='Path to the saved tf model (default: ./simulator/models/stream_200_job_diff_reward_reset_5e-7_5e-8/model_ep_10000)')
 parser.add_argument('--check_interval', type=float, default=0.01,
                     help='interval for master to check gradient report (default: 10ms)')
 parser.add_argument('--model_save_interval', type=int, default=1000,
