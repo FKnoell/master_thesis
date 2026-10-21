@@ -531,13 +531,7 @@ class Environment(object):
                 exit(1)
 
         # Compute reward
-        reward_start_time = self.reward_calculator.prev_time
-        time_reward = self.reward_calculator.get_reward(
-            self.job_dags, self.wall_time.curr_time)
-        carbon_emissions = self.compute_carbon_emissions(
-            reward_start_time, self.wall_time.curr_time)
-        reward = -carbon_emissions / args.carbon_reward_scale + \
-            args.time_reward_weight * time_reward
+        reward = self.reward_calculator.get_reward(self.job_dags, self.wall_time.curr_time)
         if carbon_aware:
             reward = 0
 

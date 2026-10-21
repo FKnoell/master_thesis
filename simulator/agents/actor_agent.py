@@ -34,11 +34,10 @@ tf.compat.v1.disable_eager_execution()
 class ActorAgent(Agent):
     def __init__(self, sess, node_input_dim, job_input_dim, hid_dims, output_dim,
                  max_depth, executor_levels, eps=1e-6, act_fn=leaky_relu,
-                 optimizer=None, scope='actor_agent',
-                 pidle=0.0, pdyn=1.0, carbon_schedule=None):
+                 optimizer=tf.compat.v1.train.AdamOptimizer, scope='actor_agent',
+                 pidle=0.0, pdyn=1.0):
 
-        Agent.__init__(self, pidle=pidle, pdyn=pdyn,
-                       carbon_schedule=carbon_schedule)
+        Agent.__init__(self, pidle=pidle, pdyn=pdyn)
 
         self.sess = sess
         self.node_input_dim = node_input_dim
@@ -402,10 +401,6 @@ class ActorAgent(Agent):
                 job_inputs[job_idx, 1] = -2
             # number of source executors
             job_inputs[job_idx, 2] = num_source_exec / 20.0
-            job_inputs[job_idx, 3] = self.pidle
-            job_inputs[job_idx, 4] = self.pdyn
-            job_inputs[job_idx, 5] = \
-                self.carbon_intensity_at(current_time) / 1000.0
 
             job_idx += 1
 
@@ -426,10 +421,6 @@ class ActorAgent(Agent):
                 # number of tasks left
                 node_inputs[node_idx, 4] = \
                     (node.num_tasks - node.next_task_idx) / 200.0
-                node_inputs[node_idx, 5] = self.pidle
-                node_inputs[node_idx, 6] = self.pdyn
-                node_inputs[node_idx, 7] = \
-                    self.carbon_intensity_at(current_time) / 1000.0
 
                 node_idx += 1
 

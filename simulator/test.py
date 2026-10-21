@@ -52,17 +52,10 @@ power_models = [
 
 # Power-aware schedulers are evaluated separately for each power model.
 power_aware_schemes = {
-    'cap_power', 'weighted_cap_fifo', 'dynamic_b_cap_fifo',
-    'lookahead_cap_fifo', 'backfill_cap_fifo', 'efficiency_cap_fifo',
-    'enhanced_cap_fifo', 'cap_power_enhanced_fifo', 'cap_decima'
+    # 'decima', 'pcaps', 'cap_decima',
 }
 carbon_aware_schemes = {
-    'cap_fifo', 'cap_partition', 'cap_power',
-    'dynamic_b_cap_fifo', 'lookahead_cap_fifo', 'backfill_cap_fifo',
-    'efficiency_cap_fifo', 'enhanced_cap_fifo', 'cap_power_enhanced_fifo',
-    'new_cap_fifo', 'weighted_cap_fifo', 'new_cap_partition',
-    'new_cap_decima', 'new_pcaps',
-    'pcaps', 'cap_decima', 'green_hadoop'
+    'cap_fifo', 'cap_partition', 'pcaps', 'cap_decima', 'green_hadoop'
 }
 baseline_power_model = {"name": "baseline", "pidle": 0.0, "pdyn": 1.0}
 
@@ -70,6 +63,7 @@ baseline_power_model = {"name": "baseline", "pidle": 0.0, "pdyn": 1.0}
 if not os.path.exists(args.result_folder):
     os.makedirs(args.result_folder)
 
+args.seed = 1
 # Generate one reproducible but distinct seed for each experiment. The same
 # seed is reused for every power model and scheme within that experiment.
 seed_generator = np.random.RandomState(args.seed)
@@ -114,16 +108,11 @@ def create_agent(scheme, power_model, experiment_seed):
         tf.compat.v1.reset_default_graph()
         tf.compat.v1.set_random_seed(int(experiment_seed))
         sess = tf.compat.v1.Session()
-        if scheme == 'pcaps':
-            return PCAPSAgent(
-                sess, args.node_input_dim, args.job_input_dim,
-                args.hid_dims, args.output_dim, args.max_depth,
-                range(1, args.exec_cap + 1), carbon_dict)
-        return CarbonActorAgent(
+        agent_class = PCAPSAgent if scheme == 'pcaps' else CarbonActorAgent
+        return agent_class(
             sess, args.node_input_dim, args.job_input_dim,
             args.hid_dims, args.output_dim, args.max_depth,
-            range(1, args.exec_cap + 1), carbon_dict,
-            pidle=pidle, pdyn=pdyn)
+            range(1, args.exec_cap + 1), carbon_schedule=carbon_dict, pidle=pidle, pdyn=pdyn)
 
     if scheme == 'decima':
         tf.compat.v1.reset_default_graph()
@@ -132,8 +121,7 @@ def create_agent(scheme, power_model, experiment_seed):
         return ActorAgent(
             sess, args.node_input_dim, args.job_input_dim,
             args.hid_dims, args.output_dim, args.max_depth,
-            range(1, args.exec_cap + 1), pidle=pidle, pdyn=pdyn,
-            carbon_schedule=carbon_dict)
+            range(1, args.exec_cap + 1), pidle=pidle, pdyn=pdyn)
     if scheme == 'dynamic_partition':
         return DynamicPartitionAgent()
     if scheme == 'spark_fifo':
@@ -273,10 +261,7 @@ for exp in range(args.num_exp):
 
         for schedule_model in schedule_models:
             np.random.seed(experiment_seed)
-            env = Environment(
-                carbon_schedule=carbon_dict,
-                pidle=schedule_model['pidle'],
-                pdyn=schedule_model['pdyn'])
+            env = Environment(carbon_schedule=carbon_dict)
             env.seed(experiment_seed)
             env.reset()
             try:
@@ -342,10 +327,7 @@ for exp in range(args.num_exp):
                 print(
                     f"Carbon usage — model {model['name']}, "
                     f"scheme {scheme}, experiment {exp + 1},: "
-                    f"dynamic={total_dynamic_carbon_usage:.2f}, "
-                    f"idle={total_idle_carbon_usage:.2f}, "
                     f"total={total_carbon_usage:.2f}, "
-                    f"status={'completed' if completed else 'invalid'}"
                 )
         
     '''

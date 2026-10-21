@@ -3,14 +3,20 @@ import argparse
 parser = argparse.ArgumentParser(description='DAG_ML')
 
 # -- Basic --
-parser.add_argument('--seed', type=int, default=100,
-                    help='random seed (default: 100)')
+parser.add_argument('--seed', type=int, default=None,
+                    help='random seed (default: random)')
 parser.add_argument('--eps', type=float, default=1e-6,
                     help='epsilon (default: 1e-6)')
 parser.add_argument('--num_proc', type=int, default=1,
                     help='number of processors (default: 1)')
 parser.add_argument('--num_exp', type=int, default=10,
                     help='number of experiments (default: 10)')
+parser.add_argument('--max_progress_points', type=int, default=500,
+                    help='maximum number of progress points per simulation')
+parser.add_argument('--progress_interval', type=int, default=10,
+                    help='simulation steps between progress points')
+parser.add_argument('--max_stalled_steps', type=int, default=100,
+                    help='maximum consecutive steps without simulation-time progress')
 parser.add_argument('--query_type', type=str, default='tpch',
                     help='query type (default: tpch)')
 parser.add_argument('--job_folder', type=str, default='./simulator/spark_env/tpch/',
@@ -21,22 +27,14 @@ parser.add_argument('--model_folder', type=str, default='./simulator/models/',
                     help='Model folder path (default: ./simulator/models)')
 parser.add_argument('--carbon_trace', type=str, default='./simulator/sample-carbon-trace.csv',
                     help='Carbon trace path (default: ./simulator/sample-carbon-trace.csv)')
-parser.add_argument('--max_progress_points', type=int, default=500,
-                    help='maximum number of progress points per simulation')
-parser.add_argument('--progress_interval', type=int, default=10,
-                    help='simulation steps between progress points')
-parser.add_argument('--max_stalled_steps', type=int, default=100,
-                    help='maximum consecutive steps without simulation-time progress')
-
 parser.add_argument('--pidle_range', type=float, default=[0.0, 1.0, 0.05],
                     nargs=3, metavar=('START', 'STOP', 'STEP'),
                     help='P_IDLE sweep range: start, stop, and step (default: 0.0 1.0 0.05)')
-parser.add_argument('--carbon_reward_scale', type=float, default=100000000000.0,
-                    help='scale for carbon-emission reward')
-parser.add_argument('--time_reward_weight', type=float, default=0.01,
-                    help='small completion-time guard in carbon reward')
 
 # -- Environment --
+parser.add_argument('--rho', type=float, default=0.7,
+                    help='Dynamic-power utilization weight for power-aware CAP (default: 0.7)')
+
 parser.add_argument('--exec_cap', type=int, default=100,
                     help='Number of total executors (default: 100)')
 parser.add_argument('--num_init_dags', type=int, default=1,
