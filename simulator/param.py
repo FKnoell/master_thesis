@@ -11,8 +11,6 @@ parser.add_argument('--num_proc', type=int, default=1,
                     help='number of processors (default: 1)')
 parser.add_argument('--num_exp', type=int, default=10,
                     help='number of experiments (default: 10)')
-parser.add_argument('--max_progress_points', type=int, default=500,
-                    help='maximum number of progress points per simulation')
 parser.add_argument('--progress_interval', type=int, default=10,
                     help='simulation steps between progress points')
 parser.add_argument('--max_stalled_steps', type=int, default=100,
@@ -30,11 +28,12 @@ parser.add_argument('--carbon_trace', type=str, default='./simulator/sample-carb
 parser.add_argument('--pidle_range', type=float, default=[0.0, 1.0, 0.05],
                     nargs=3, metavar=('START', 'STOP', 'STEP'),
                     help='P_IDLE sweep range: start, stop, and step (default: 0.0 1.0 0.05)')
+parser.add_argument('--max_slowdown', type=float, default=1.05,
+                    help='Maximum slowdown allowed for enhanced fifo variants (default: 1.05)')
 
 # -- Environment --
 parser.add_argument('--rho', type=float, default=0.7,
                     help='Dynamic-power utilization weight for power-aware CAP (default: 0.7)')
-
 parser.add_argument('--exec_cap', type=int, default=100,
                     help='Number of total executors (default: 100)')
 parser.add_argument('--num_init_dags', type=int, default=1,

@@ -34,8 +34,7 @@ import pandas as pd
 if args.seed is None:
     args.seed = int(np.random.SeedSequence().generate_state(1)[0])
 
-if args.max_progress_points <= 0:
-    raise ValueError('--max_progress_points must be greater than 0')
+max_progress_points = args.num_stream_dags * 10
 if args.progress_interval <= 0:
     raise ValueError('--progress_interval must be greater than 0')
 if args.max_stalled_steps <= 0:
@@ -167,11 +166,11 @@ def create_agent(scheme, power_model, experiment_seed):
     if scheme == 'enhanced_cap_fifo':
         return EnhancedCapFIFOAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
-            pidle=pidle, pdyn=pdyn)
+            pidle=pidle, pdyn=pdyn, max_slowdown=args.max_slowdown)
     if scheme == 'cap_power_enhanced_fifo':
         return CapPowerEnhancedFIFOAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict,
-            pidle=pidle, pdyn=pdyn)
+            pidle=pidle, pdyn=pdyn, max_slowdown=args.max_slowdown)
     if scheme in ('new_cap_partition'):
         return NewCarbonPartitionAgent(
             exec_cap=args.exec_cap, carbon_schedule=carbon_dict)
@@ -217,7 +216,7 @@ def run_scheme(env, scheme, agent):
         if step % args.progress_interval == 0:
             print('.', end='', flush=True)
             progress_points += 1
-            if progress_points >= args.max_progress_points:
+            if progress_points >= max_progress_points:
                 stop_reason = 'max_progress_points'
                 break
 
