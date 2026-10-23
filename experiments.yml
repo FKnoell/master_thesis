@@ -39,7 +39,10 @@ experiments:
       - lookahead_cap_fifo
       - weighted_cap_fifo
       - enhanced_cap_fifo
+      - cap_power_enhanced_fifo
       - pcaps
+      - --max_slowdown
+      - "1.02"
     stdout: out
 
   - name: agent-variants
@@ -120,6 +123,7 @@ experiments:
       - lookahead_cap_fifo
       - weighted_cap_fifo
       - enhanced_cap_fifo
+      - cap_power_enhanced_fifo
       - pcaps
       - new_pcaps
     stdout: out
