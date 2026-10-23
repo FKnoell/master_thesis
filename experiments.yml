@@ -1,0 +1,115 @@
+instdir: ./instances
+
+instances:
+  - repo: local
+    items:
+      - local
+
+experiments:
+  - name: test-fifo
+    args:
+      - python
+      - simulator/test.py
+      - --num_exp
+      - "1"
+      - --result_folder
+      - "@OUTPUT_SUBDIR@"
+      - "@EXTRA_ARGS@"
+      - --test_schemes
+      - spark_fifo
+    stdout: out
+
+  - name: decima-training
+    args:
+      - python
+      - simulator/train.py
+      - --exec_cap
+      - "50"
+      - --num_init_dags
+      - "1"
+      - --num_stream_dags
+      - "200"
+      - --reset_prob
+      - "5e-7"
+      - --reset_prob_min
+      - "5e-8"
+      - --reset_prob_decay
+      - "4e-10"
+      - --diff_reward_enabled
+      - "1"
+      - --num_agents
+      - "16"
+      - --model_folder
+      - ./simulator/models/stream_200_power_conditioned/
+      - --pidle_range
+      - "0 1 0.05"
+    stdout: out 
+
+
+variants:
+  - axis: exec-cap
+    items:
+      - name: cap100
+        extra_args:
+          - --exec_cap
+          - "100"
+      - name: cap50
+        extra_args:
+          - --exec_cap
+          - "50"
+
+  - axis: init-dags
+    items:
+      - name: init1
+        extra_args:
+          - --num_init_dags
+          - "1"
+      - name: init3
+        extra_args:
+          - --num_init_dags
+          - "3"
+
+  - axis: stream-dags
+    items:
+      - name: stream50
+        extra_args:
+          - --num_stream_dags
+          - "50"
+      - name: stream100
+        extra_args:
+          - --num_stream_dags
+          - "100"
+      - name: stream200
+        extra_args:
+          - --num_stream_dags
+          - "200"
+
+  - axis: num_ep
+    items:
+      - name: ep1000
+        extra_args:
+          - --num_ep
+          - "1000"
+          - --model_save_interval
+          - "100"
+      - name: ep10000
+        extra_args:
+          - --num_ep
+          - "10000"
+          - --model_save_interval
+          - "1000"
+        
+
+matrix:
+  include:
+    - experiments:
+        - test-fifo
+      axes:
+        - exec-cap
+        - init-dags
+        - stream-dags
+
+    - experiments:
+        - decima-training
+      axes:
+        - num_ep
